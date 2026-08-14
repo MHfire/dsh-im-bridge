@@ -149,5 +149,6 @@ node bridge.js
 
 ## 🔗 参考
 
-- [企业微信智能机器人官方 SDK](https://github.com/WecomTeam/aibot-node-sdk)
+- 📚 [企业微信渠道接入说明](./docs/wecom.md)
+- [企业微信智能机器人官方 SDK](https://github.com/WecomTeam/aibot-node-sdk)（文档副本：`docs/aibot-node-sdk-README.md`）
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
