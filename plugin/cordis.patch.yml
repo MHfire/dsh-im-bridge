@@ -1,0 +1,6 @@
+# dsh-im-bridge bundle patch: 声明插件行。
+# 密钥(botId/secret)等敏感配置由 profile 层($DSH_HOME/profiles/web/cordis.patch.yml)覆盖,
+# 不要写在这里。
+- insert:
+    - id: im-bridge
+      name: '@mhfire/dsh-im-bridge'

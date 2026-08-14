@@ -1,0 +1,9 @@
+{
+  "botId": "你的 BotID",
+  "secret": "你的 Secret",
+  "workspace": "<Agent 工作目录，如 D:\\workspace>",
+  "dshCli": "<dsh CLI 入口脚本，如 C:\\path\\to\\dsh\\lib\\bin.js>",
+  "agentTimeoutSec": 1800,
+  "allowFrom": [],
+  "startHint": "🧠 已收到，正在处理..."
+}

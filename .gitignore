@@ -1,0 +1,17 @@
+# 依赖
+node_modules/
+
+# 日志/临时
+*.log
+.DS_Store
+
+# 机器本地配置(含企业微信 botId/secret, 勿提交/勿发布)
+config.json
+
+# 提示词文件(含 SSH 凭据等环境敏感信息, 勿提交; 用 persona.example.md 作模板)
+plugin/persona.md
+
+# 打包产物
+*.tgz
+
+

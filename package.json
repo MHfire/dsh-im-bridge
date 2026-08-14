@@ -1,0 +1,14 @@
+{
+  "name": "dsh-im-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "企业微信智能机器人(WebSocket直连) <-> DeepSeek Harness headless agent 桥接服务",
+  "license": "MIT",
+  "main": "bridge.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@wecom/aibot-node-sdk": "^1.0.7"
+  }
+}
