@@ -18,7 +18,8 @@
   "files": [
     "src",
     "lib",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "persona.example.md"
   ],
   "dsh": {
     "bundle": {
