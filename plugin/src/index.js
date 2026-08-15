@@ -95,11 +95,13 @@ export function apply(ctx, config) {
   const persona = resolvePersona(config)
 
   // ── 设置命名空间: 用户可在 GUI 插件配置页 / settings.yaml 覆盖字段(热生效) ──
-  const settings = ctx.get('settings')
+  // 规范做法(与 @deepseek-ai/dsh-settings 的 installSettingsSection 一致):
+  // 用 ctx.inject(['settings'], cb) 延迟到 settings 服务可用时再注册,
+  // 避免 apply 时 settings 尚未挂载导致命名空间缺失(GUI 卡片显示"命名空间不可用")。
   let scope
-  if (settings !== undefined) {
-    scope = settings.register('im-bridge', Config, { base: { ...config } })
-  }
+  ctx.inject(['settings'], (sctx) => {
+    scope = sctx.settings.register('im-bridge', Config, { base: { ...config } })
+  })
   /** 有效配置: 默认值 → cordis patch(base) → 用户 settings.yaml, 热更新 */
   const cfg = () => scope?.value ?? config
 
