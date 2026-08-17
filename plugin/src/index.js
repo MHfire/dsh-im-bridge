@@ -27,10 +27,10 @@ export const name = 'im-bridge'
 /** 依赖的核心服务 */
 export const inject = ['agents', 'sessions', 'agentDefaultModel']
 
-/** 插件配置(zod): 敏感项由 profile 层 patch 提供 */
+/** 插件配置(zod): 敏感项由 profile 层 patch 或 Settings 提供；缺省时跳过企微连线，不阻塞主进程 */
 export const Config = z.object({
-  botId: z.string().required().role('secret'),
-  secret: z.string().required().role('secret'),
+  botId: z.string().default('').role('secret'),
+  secret: z.string().default('').role('secret'),
   /** Agent 的工作目录(会话 cwd) */
   workspace: z.string().default(process.cwd()),
   /** 允许的发送者 userid 白名单; 空 = 允许所有人 */
@@ -90,14 +90,11 @@ export function apply(ctx, config) {
     throw new Error('im-bridge: 需要 agents/sessions/agentDefaultModel 服务')
   }
 
-  // per-sender 持久会话状态: sender -> { agent, sessionId, queue, lastActivity }
-  const senders = new Map()
-  const persona = resolvePersona(config)
-
   // ── 设置命名空间: 用户可在 GUI 插件配置页 / settings.yaml 覆盖字段(热生效) ──
   // 规范做法(与 @deepseek-ai/dsh-settings 的 installSettingsSection 一致):
   // 用 ctx.inject(['settings'], cb) 延迟到 settings 服务可用时再注册,
   // 避免 apply 时 settings 尚未挂载导致命名空间缺失(GUI 卡片显示"命名空间不可用")。
+  // 缺凭证时仍注册, 便于在 Settings 补齐后再重启启用企微。
   let scope
   ctx.inject(['settings'], (sctx) => {
     scope = sctx.settings.register('im-bridge', Config, { base: { ...config } })
@@ -105,55 +102,67 @@ export function apply(ctx, config) {
   /** 有效配置: 默认值 → cordis patch(base) → 用户 settings.yaml, 热更新 */
   const cfg = () => scope?.value ?? config
 
-  /** 创建(或复用)某发送者的 Agent(会话/上下文持久于进程内) */
-  async function ensureAgent(sender) {
-    let st = senders.get(sender)
-    if (st !== undefined && st.agent !== undefined) return st
-    const sessionId = SessionId(`session-${randomUUID()}`)
-    const selection = defaultModel.currentSelection()
-    // 有 preset roster 的部署(如 web profile)必须在 setup 里 mount,
-    // 否则 agent 看不到任何工具(模型只能编造工具调用)。
-    const presets = ctx.get('agentPresets')
-    let resolvedId = cfg().agentPreset
-    if (presets !== undefined) {
-      resolvedId = (await presets.resolve(cfg().agentPreset)).id
-    }
-    const { agent } = await agents.create({
-      sessionId,
-      meta: { cwd: cfg().workspace, agentPreset: resolvedId },
-      agentOptions: { provider: selection.provider, model: selection.model },
-      setup: async (agentCtx) => {
-        const selected = { current: selection, assembled: undefined }
-        installModelSelection(agentCtx, selected)
-        if (presets !== undefined) await presets.mount(agentCtx, resolvedId)
-        if (persona !== '') {
-          agentCtx.inject(['systemPrompt'], (promptCtx) => {
-            promptCtx.systemPrompt.section({
-              name: 'deployment:persona', // 同名 scoped section 覆盖部署 persona(仅本 agent)
-              order: 0,
-              text: persona,
-            })
-          })
-        }
-      },
-    })
-    st = { agent, sessionId, queue: Promise.resolve(), lastActivity: '' }
-    senders.set(sender, st)
-    console.log(`[im-bridge] 为 ${sender} 创建会话 ${sessionId}`)
-    return st
-  }
-
-  // 会话事件 → 真实活动状态(工具调用名), 让动画显示"正在做什么"
-  ctx.on('session/event', (session, event) => {
-    if (event.type !== 'tool/call') return
-    for (const st of senders.values()) {
-      if (st.sessionId === session.id) st.lastActivity = `🛠️ 正在执行 ${event.data.name}`
-    }
-  })
-
   // ── 企微 WebSocket: 延迟到 loader settle 后启动, 不占启动关键路径 ──
   void (async () => {
     await ctx.get('loader')?.await()
+    const { botId, secret } = cfg()
+    if (!botId || !secret) {
+      console.warn(
+        '[im-bridge] 跳过启动: 缺少 botId/secret。请在 profile cordis.patch.yml 或 Settings → 插件配置中填写后重启。',
+      )
+      return
+    }
+
+    // per-sender 持久会话状态: sender -> { agent, sessionId, queue, lastActivity }
+    const senders = new Map()
+    const persona = resolvePersona(cfg())
+
+    /** 创建(或复用)某发送者的 Agent(会话/上下文持久于进程内) */
+    async function ensureAgent(sender) {
+      let st = senders.get(sender)
+      if (st !== undefined && st.agent !== undefined) return st
+      const sessionId = SessionId(`session-${randomUUID()}`)
+      const selection = defaultModel.currentSelection()
+      // 有 preset roster 的部署(如 web profile)必须在 setup 里 mount,
+      // 否则 agent 看不到任何工具(模型只能编造工具调用)。
+      const presets = ctx.get('agentPresets')
+      let resolvedId = cfg().agentPreset
+      if (presets !== undefined) {
+        resolvedId = (await presets.resolve(cfg().agentPreset)).id
+      }
+      const { agent } = await agents.create({
+        sessionId,
+        meta: { cwd: cfg().workspace, agentPreset: resolvedId },
+        agentOptions: { provider: selection.provider, model: selection.model },
+        setup: async (agentCtx) => {
+          const selected = { current: selection, assembled: undefined }
+          installModelSelection(agentCtx, selected)
+          if (presets !== undefined) await presets.mount(agentCtx, resolvedId)
+          if (persona !== '') {
+            agentCtx.inject(['systemPrompt'], (promptCtx) => {
+              promptCtx.systemPrompt.section({
+                name: 'deployment:persona', // 同名 scoped section 覆盖部署 persona(仅本 agent)
+                order: 0,
+                text: persona,
+              })
+            })
+          }
+        },
+      })
+      st = { agent, sessionId, queue: Promise.resolve(), lastActivity: '' }
+      senders.set(sender, st)
+      console.log(`[im-bridge] 为 ${sender} 创建会话 ${sessionId}`)
+      return st
+    }
+
+    // 会话事件 → 真实活动状态(工具调用名), 让动画显示"正在做什么"
+    ctx.on('session/event', (session, event) => {
+      if (event.type !== 'tool/call') return
+      for (const st of senders.values()) {
+        if (st.sessionId === session.id) st.lastActivity = `🛠️ 正在执行 ${event.data.name}`
+      }
+    })
+
     const { default: AiBot } = await import('@wecom/aibot-node-sdk')
 
     /** 处理一条消息: 动画 → followup → 汇总 → 简报 */
@@ -195,7 +204,7 @@ export function apply(ctx, config) {
       }
     }
 
-    const ws = new AiBot.WSClient({ botId: cfg().botId, secret: cfg().secret })
+    const ws = new AiBot.WSClient({ botId, secret })
 
     ws.on('connected', () => console.log('[im-bridge] WebSocket 已连接'))
     ws.on('authenticated', () => console.log('[im-bridge] 认证成功, 等待消息...'))

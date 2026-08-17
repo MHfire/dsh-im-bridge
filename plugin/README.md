@@ -23,11 +23,13 @@ dsh plugin --profile web add <本包路径>
 
 重启 dsh 进程即可使用。
 
+未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；Settings → 插件配置页仍可填写，保存后**重启**进程才会连接（本版本不做热启连）。
+
 ## 配置项
 
 | 字段 | 说明 |
 |---|---|
-| `botId` / `secret` | 企业微信智能机器人凭证（`role('secret')`，UI 自动脱敏） |
+| `botId` / `secret` | 企业微信智能机器人凭证（`role('secret')`，UI 自动脱敏）；缺省时跳过企微侧，不阻塞主进程 |
 | `workspace` | Agent 工作目录（会话 cwd） |
 | `allowFrom` | 允许的发送者 userid 白名单；空 = 允许所有人 |
 | `agentTimeoutSec` | 单任务最长执行时间（秒），动画进度条/剩余估算的基准 |
