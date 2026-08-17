@@ -6,11 +6,15 @@
 
 ## 安装
 
+### 推荐：从 npm 安装
+
 ```powershell
-dsh plugin --profile web add <本包路径>
+dsh plugin --profile web add @mhfire/dsh-im-bridge
+# 或钉版本：
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
 ```
 
-在 profile 的 `cordis.patch.yml` 中配置：
+在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中配置：
 
 ```yaml
 - id: im-bridge
@@ -21,7 +25,15 @@ dsh plugin --profile web add <本包路径>
     personaFile: "<绝对路径>/persona.md"
 ```
 
-重启 dsh 进程即可使用。
+重启 dsh 进程即可使用（例如 `dsh web` / `pnpm dsh web`）。
+
+### 备选：本地开发
+
+从本仓库 `plugin/` 目录或 `file:` 路径安装：
+
+```powershell
+dsh plugin --profile web add <本包路径>
+```
 
 未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；Settings → 插件配置页仍可填写，保存后**重启**进程才会连接（本版本不做热启连）。
 

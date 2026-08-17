@@ -7,7 +7,7 @@
 通过企业微信智能机器人的 WebSocket 长连接，把企业微信消息交给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Agent 处理，再将结果流式回复到微信。
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.1.0-blue)
+![version](https://img.shields.io/badge/version-0.1.2-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -69,13 +69,14 @@ flowchart LR
 2. **应用管理 → 智能机器人 → 创建智能机器人**，填写名称/头像
 3. 记录凭证（**Secret 只显示一次，立即保存**）：`BotID` 与 `Secret`
 
-### 2. 安装插件（推荐方式）
+### 2. 安装插件（推荐：npm 包）
 
 ```powershell
-# 1) 把插件装进目标 profile（如 web）
-dsh plugin --profile web add <本仓库路径>/plugin
+# 1) 从 npm 装进目标 profile（如 web）
+dsh plugin --profile web add @mhfire/dsh-im-bridge
+# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
 
-# 2) 在 profile 的 cordis.patch.yml 中配置插件行
+# 2) 在 $DSH_HOME/profiles/web/cordis.patch.yml 中配置插件行
 # - id: im-bridge
 #   config:
 #     botId: "<你的 BotID>"
@@ -83,8 +84,14 @@ dsh plugin --profile web add <本仓库路径>/plugin
 #     workspace: "<你的工作区>"
 #     personaFile: "<绝对路径>/persona.md"
 
-# 3) 重启 dsh 进程
+# 3) 重启 dsh 进程（如 dsh web / pnpm dsh web）
 # 4) 在企业微信给机器人发消息即可使用
+```
+
+### 从源码 / 本地开发（备选）
+
+```powershell
+dsh plugin --profile web add <本仓库路径>/plugin
 ```
 
 ### 3. 验证
