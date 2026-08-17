@@ -19,7 +19,8 @@
     "src",
     "lib",
     "cordis.patch.yml",
-    "persona.example.md"
+    "persona.example.md",
+    "README.en.md"
   ],
   "dsh": {
     "bundle": {

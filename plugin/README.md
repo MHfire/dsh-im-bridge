@@ -1,3 +1,5 @@
+中文 | [English](./README.en.md)
+
 # @mhfire/dsh-im-bridge
 
 企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接 **DSH 插件**。
