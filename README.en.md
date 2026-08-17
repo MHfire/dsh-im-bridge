@@ -112,6 +112,8 @@ Copy `config.example.json` to `config.json` and fill in values (**`config.json` 
 | `agentTimeoutSec` | Max seconds per task |
 | `allowFrom` | Allowed sender userids; empty `[]` = allow everyone |
 | `startHint` | Placeholder text when processing starts |
+| `thinking` | Streaming thinking animation (`phases` / `spin` / `eggs`; see `plugin/README.en.md`) |
+| `deniedMessage` / `welcomeMessage` | Deny text / enter-chat welcome |
 
 > **`patch`** (legacy `bridge.js` only, optional): path to a workspace `--patch` overlay
 > (default `workspace/headless.patch.yml`, local config not in this repo). Add it yourself if needed, e.g. `"patch": "headless.patch.yml"`.

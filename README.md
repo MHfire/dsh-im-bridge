@@ -111,6 +111,8 @@ dsh plugin --profile web add <本仓库路径>/plugin
 | `agentTimeoutSec` | 单任务最长执行时间（秒） |
 | `allowFrom` | 允许的发送者 userid 列表；留空 `[]` = 允许所有人 |
 | `startHint` | 开始处理时的占位提示语 |
+| `thinking` | 流式思考动画素材（`phases` / `spin` / `eggs` 等，见 `plugin/README.md`） |
+| `deniedMessage` / `welcomeMessage` | 拒绝文案 / 进入会话欢迎语 |
 
 > **`patch` 字段**（旧版 `bridge.js` 专用，可选）：指向工作区的 `--patch` 覆盖层文件
 > （默认 `workspace/headless.patch.yml`，本地配置文件，不在本仓库内）。示例配置已移除该字段，

@@ -19,13 +19,27 @@ import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import { startThinking, sendFinal, truncate, footerOf, fmtDuration } from './wecom.js'
+import { startThinking, sendFinal, truncate, footerOf, fmtDuration, DEFAULT_THINKING } from './wecom.js'
 
 /** 稳定插件名 */
 export const name = 'im-bridge'
 
 /** 依赖的核心服务 */
 export const inject = ['agents', 'sessions', 'agentDefaultModel']
+
+const ThinkingPhase = z.object({
+  atSec: z.number(),
+  text: z.string(),
+})
+
+const ThinkingConfig = z.object({
+  phases: z.array(ThinkingPhase).default(DEFAULT_THINKING.phases),
+  spin: z.array(String).default(DEFAULT_THINKING.spin),
+  eggs: z.array(String).default(DEFAULT_THINKING.eggs),
+  eggAfterSec: z.number().default(DEFAULT_THINKING.eggAfterSec),
+  intervalMs: z.number().default(DEFAULT_THINKING.intervalMs),
+  activityPrefix: z.string().default(DEFAULT_THINKING.activityPrefix),
+})
 
 /** 插件配置(zod): 敏感项由 profile 层 patch 或 Settings 提供；缺省时跳过企微连线，不阻塞主进程 */
 export const Config = z.object({
@@ -47,6 +61,12 @@ export const Config = z.object({
   personaFile: z.string().default(''),
   /** 回复上限(字节) */
   maxReplyBytes: z.number().default(20000),
+  /** 流式思考动画素材(阶段/表情/彩蛋等); 可在 profile patch 覆盖 */
+  thinking: ThinkingConfig.default(DEFAULT_THINKING),
+  /** 非白名单用户的拒绝文案 */
+  deniedMessage: z.string().default('无权访问本服务'),
+  /** 用户进入会话时的欢迎语 */
+  welcomeMessage: z.string().default('👋 办公助手已就绪。直接发消息即可，例如查文件、整理文档、查资料或处理日常事务。'),
 })
 
 /** 收集一次 turn 内最后一条 assistant 文本与结束原因 */
@@ -158,8 +178,9 @@ export function apply(ctx, config) {
     // 会话事件 → 真实活动状态(工具调用名), 让动画显示"正在做什么"
     ctx.on('session/event', (session, event) => {
       if (event.type !== 'tool/call') return
+      const prefix = cfg().thinking?.activityPrefix ?? DEFAULT_THINKING.activityPrefix
       for (const st of senders.values()) {
-        if (st.sessionId === session.id) st.lastActivity = `🛠️ 正在执行 ${event.data.name}`
+        if (st.sessionId === session.id) st.lastActivity = `${prefix}${event.data.name}`
       }
     })
 
@@ -173,7 +194,11 @@ export function apply(ctx, config) {
       let stopThinking = null
       try {
         await ws.replyStream(frame, streamId, cfg().startHint, false)
-        stopThinking = startThinking(ws, frame, streamId, startedAt, cfg().agentTimeoutSec, () => st.lastActivity || '')
+        stopThinking = startThinking(
+          ws, frame, streamId, startedAt, cfg().agentTimeoutSec,
+          () => st.lastActivity || '',
+          cfg().thinking,
+        )
       } catch (e) {
         console.error(`[im-bridge] 占位回复失败: ${e.message}`)
       }
@@ -217,7 +242,7 @@ export function apply(ctx, config) {
       if (!content) return
       const sender = frame.body?.sender?.userid || frame.body?.from?.userid || frame.body?.userid || 'unknown'
       if (cfg().allowFrom.length > 0 && !cfg().allowFrom.includes(sender)) {
-        ws.replyStream(frame, generateReqId('stream'), '无权访问本服务', true).catch(() => {})
+        ws.replyStream(frame, generateReqId('stream'), cfg().deniedMessage, true).catch(() => {})
         return
       }
       console.log(`[im-bridge] 收到 from=${sender}: ${content.slice(0, 100)}`)
@@ -233,7 +258,7 @@ export function apply(ctx, config) {
       console.log(`[im-bridge] 用户 ${sender} 进入会话`)
       ws.replyWelcome(frame, {
         msgtype: 'text',
-        text: { content: '👋 云PC 诊断助手已就绪。直接发消息即可让我诊断设备/服务状态。' },
+        text: { content: cfg().welcomeMessage },
       }).catch((e) => console.error(`[im-bridge] 欢迎语失败: ${e.message}`))
     })
 

@@ -12,3 +12,36 @@
         persona: ''
         personaFile: ''
         maxReplyBytes: 20000
+        deniedMessage: '无权访问本服务'
+        welcomeMessage: '👋 办公助手已就绪。直接发消息即可，例如查文件、整理文档、查资料或处理日常事务。'
+        thinking:
+          eggAfterSec: 240
+          intervalMs: 1500
+          activityPrefix: '🛠️ 正在执行 '
+          spin:
+            - '🧠'
+            - '💭'
+            - '✨'
+            - '🔎'
+            - '⚡'
+          eggs:
+            - '📎 顺手把要点整理好了，稍后一起给你'
+            - '📶 网络有点忙，让它慢慢跑'
+            - '🎯 结果快出来了，坚持一下'
+            - '🗂️ 资料较多，正在汇总中'
+            - '🌙 别盯着了，完成会自动通知你'
+          phases:
+            - atSec: 0
+              text: '🤔 正在理解你的需求…'
+            - atSec: 8
+              text: '📋 正在整理任务清单'
+            - atSec: 25
+              text: '🔍 正在查找相关资料'
+            - atSec: 55
+              text: '✍️ 正在处理文档/数据'
+            - atSec: 120
+              text: '🧠 正在思考最佳方案…'
+            - atSec: 240
+              text: '⏳ 任务较繁琐，请稍候…'
+            - atSec: 420
+              text: '☕ 快好了，正在收尾…'

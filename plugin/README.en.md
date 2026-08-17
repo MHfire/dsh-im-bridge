@@ -52,6 +52,19 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 | `agentPreset` | Agent preset to mount (default `standard`) |
 | `persona` / `personaFile` | Bot persona (system prompt); `personaFile` wins; do not commit secrets |
 | `maxReplyBytes` | Reply size cap in bytes (default 20000) |
+| `deniedMessage` | Reply when the sender is not on `allowFrom` (editable in Settings) |
+| `welcomeMessage` | Welcome text on `enter_chat` (editable in Settings) |
+| `thinking` | Streaming “thinking” animation: `phases` / `spin` / `eggs` / `eggAfterSec` / `intervalMs` / `activityPrefix`; override via profile patch (not the simple Settings card) |
+
+Example `thinking.phases` override:
+
+```yaml
+thinking:
+  intervalMs: 1500
+  phases:
+    - atSec: 0
+      text: '🤔 Understanding your request…'
+```
 
 ## Persona
 

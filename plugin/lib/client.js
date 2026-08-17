@@ -18,6 +18,8 @@ var FIELDS = [
   { field: 'allowFrom', label: '允许的发送者 userid（逗号分隔，空 = 所有人）', kind: 'text' },
   { field: 'agentTimeoutSec', label: '单任务超时（秒）', kind: 'number' },
   { field: 'startHint', label: '开始处理时的占位提示', kind: 'text' },
+  { field: 'deniedMessage', label: '非白名单拒绝文案', kind: 'text' },
+  { field: 'welcomeMessage', label: '进入会话欢迎语', kind: 'text' },
 ];
 
 function fmt(f, v) {

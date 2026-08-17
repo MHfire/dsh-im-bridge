@@ -52,6 +52,19 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 | `agentPreset` | Agent 加入的 preset（默认 `standard`） |
 | `persona` / `personaFile` | 机器人「人设」（系统提示词）；`personaFile` 优先，含敏感信息请勿入库 |
 | `maxReplyBytes` | 回复上限（字节，默认 20000） |
+| `deniedMessage` | 非白名单用户的拒绝文案（Settings 可编） |
+| `welcomeMessage` | 进入会话欢迎语（Settings 可编） |
+| `thinking` | 流式思考动画：`phases` / `spin` / `eggs` / `eggAfterSec` / `intervalMs` / `activityPrefix`；结构请在 profile patch 覆盖，简易卡片不编辑 |
+
+`thinking.phases` 示例（profile 覆盖时可只改文案）：
+
+```yaml
+thinking:
+  intervalMs: 1500
+  phases:
+    - atSec: 0
+      text: '🤔 正在理解你的需求…'
+```
 
 ## 人设（persona）
 
