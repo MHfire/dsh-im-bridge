@@ -50,7 +50,7 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 | `agentTimeoutSec` | Max seconds per task; also drives progress / ETA |
 | `startHint` | Placeholder text when processing starts |
 | `agentPreset` | Agent preset to mount (default `standard`) |
-| `persona` / `personaFile` | Bot persona (system prompt); `personaFile` wins; do not commit secrets |
+| `persona` / `personaFile` | Bot persona; precedence: `personaFile` → `persona` → packaged default (zh/en via Host `locale.preference`); overrides do not follow language; do not commit secrets |
 | `maxReplyBytes` | Reply size cap in bytes (default 20000) |
 | `deniedMessage` | Reply when the sender is not on `allowFrom` (editable in Settings) |
 | `welcomeMessage` | Welcome text on `enter_chat` (editable in Settings) |
@@ -68,9 +68,20 @@ thinking:
 
 ## Persona
 
-`persona.md` is the bot persona: role and behavior rules, injected as a system prompt each session.
-Copy `persona.example.md` to `persona.md` and edit; supports `{{model}}` / `{{cwd}}`.
-The file may contain credentials and is gitignored — do not commit it.
+Precedence: `personaFile` → `persona` string → packaged default persona.
+
+- **Packaged defaults**: [`persona.default.md`](./persona.default.md) (Chinese) / [`persona.default.en.md`](./persona.default.en.md) (English). Chosen from Host settings `locale.preference` (`zh`|`en`); **falls back to Chinese when unset** (the Host cannot see a browser-only provisional locale). Re-read on each assemble so a Settings language change applies on the next request.
+- **Overrides do not follow language**: a set `personaFile` / non-empty `persona` always wins.
+
+**Recommended override**: place `persona.md` next to `cordis.patch.yml` under `$DSH_HOME/profiles/<name>/`, and point `personaFile` at it with an absolute path (relative paths resolve against process cwd):
+
+```yaml
+- id: im-bridge
+  config:
+    personaFile: 'C:\\Users\\you\\.dsh\\profiles\\web\\persona.md'
+```
+
+Or copy [`persona.example.md`](./persona.example.md) as a fill-in template. Supports `{{model}}` / `{{cwd}}`. Do not commit secret-bearing persona files. Welcome / deny / thinking copy remain Chinese config strings and do not follow locale yet.
 
 ## Security
 

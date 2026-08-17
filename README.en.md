@@ -30,7 +30,7 @@ This repository ships two run modes:
 - **Direct WebSocket**: no public URL, no message crypto, no IP allowlist
 - **In-process Agent**: no child process spawn; sessions register with the GUI for live view and continue-chat
 - **Per-sender durable sessions**: the same WeCom user reuses one session with memory
-- **Custom persona**: `persona.md` is the bot persona, injected as a system prompt
+- **Custom persona**: zh/en packaged defaults follow Settings language; override with `persona.md` next to the profile patch
 - **Hot config**: `allowFrom` / `agentTimeoutSec` / `startHint` editable in Settings → Plugins or `settings.yaml` without restart
 - **Streaming animation + completion footer**: stage/progress/ETA while running; duration summary when done
 - Auth / heartbeat / exponential reconnect (built into the SDK)
@@ -122,11 +122,11 @@ For the plugin, `allowFrom` / `agentTimeoutSec` / `startHint` can be edited unde
 
 ## Persona (`persona.md`)
 
-`persona.md` is the bot **persona** (role and behavior rules), injected as a system prompt for every session.
+Precedence: `personaFile` → `persona` string → packaged default (zh/en via Host `locale.preference`; Chinese when unset).
 
-- The plugin loads it via `personaFile`
-- Template: `plugin/persona.example.md` (sample “office assistant”; change as needed)
-- **`persona.md` may contain environment secrets — do not commit**: copy `plugin/persona.example.md` to `plugin/persona.md` and edit
+- **Recommended**: place `persona.md` next to `cordis.patch.yml` under `$DSH_HOME/profiles/<name>/`, and set `personaFile` to that absolute path (overrides do not follow language)
+- Defaults: `plugin/persona.default.md` / `plugin/persona.default.en.md`; template: `plugin/persona.example.md`
+- **Do not commit secret-bearing persona files**
 - Placeholders: `{{model}}` / `{{cwd}}` (unknown placeholders fail loudly)
 
 ## Legacy `bridge.js`

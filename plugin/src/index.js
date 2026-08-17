@@ -15,11 +15,22 @@
  */
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { startThinking, sendFinal, truncate, footerOf, fmtDuration, DEFAULT_THINKING } from './wecom.js'
+
+/** 包根目录(与 persona.default*.md 同级) */
+const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+/** 包内中文默认人设 */
+const DEFAULT_PERSONA_ZH = join(PACKAGE_ROOT, 'persona.default.md')
+/** 包内英文默认人设 */
+const DEFAULT_PERSONA_EN = join(PACKAGE_ROOT, 'persona.default.en.md')
+/** Host settings 中与 dsh-client-locale 一致的语言命名空间 */
+const LOCALE_SETTINGS_NS = 'locale'
 
 /** 稳定插件名 */
 export const name = 'im-bridge'
@@ -55,9 +66,9 @@ export const Config = z.object({
   agentTimeoutSec: z.number().default(600),
   /** Agent 加入的 preset(web profile 下默认 standard) */
   agentPreset: z.string().default('standard'),
-  /** 覆盖默认 persona 的文本(可选; 为空用 preset 自带) */
+  /** 覆盖包内默认人设的文本(可选; 为空且无 personaFile 时按 locale 选默认文件) */
   persona: z.string().default(''),
-  /** 从文件读取 persona(可选; 优先于 persona 字段, 便于维护长文本) */
+  /** 从文件读取人设(可选; 优先于 persona; 不跟语言切换; 推荐与 profile 的 cordis.patch.yml 同目录) */
   personaFile: z.string().default(''),
   /** 回复上限(字节) */
   maxReplyBytes: z.number().default(20000),
@@ -90,8 +101,45 @@ function summarize(events, firstSeq) {
   return { text, reason }
 }
 
-/** 读取 persona: personaFile 优先, 其次 persona 字段 */
-function resolvePersona(config) {
+/**
+ * 读 Host `locale.preference`(`zh`|`en`); 缺失或未知时回退 `zh`
+ * (与客户端 FALLBACK_LOCALE 一致; 未显式选择时 Host 不知浏览器实际语言)。
+ * @param {{ get?: (ns: string) => unknown } | undefined} settings
+ * @returns {'zh' | 'en'}
+ */
+function readLocalePreference(settings) {
+  if (settings?.get === undefined) return 'zh'
+  try {
+    const section = settings.get(LOCALE_SETTINGS_NS)
+    const pref = section && typeof section === 'object' && 'preference' in section
+      ? section.preference
+      : undefined
+    return pref === 'en' ? 'en' : 'zh'
+  } catch {
+    return 'zh'
+  }
+}
+
+/**
+ * 去掉文件开头连续的 `# …` 行与紧随空行(仅用于包内默认人设维护说明)。
+ * 不对用户 personaFile 调用: 用户可能故意用 `#` 作标题。
+ * @param {string} text
+ * @returns {string}
+ */
+function stripLeadingHashComments(text) {
+  const lines = text.split(/\r?\n/)
+  let i = 0
+  while (i < lines.length && /^\s*#/.test(lines[i])) i++
+  while (i < lines.length && lines[i].trim() === '') i++
+  return lines.slice(i).join('\n')
+}
+
+/**
+ * 读取人设: personaFile → persona 字符串 → 包内默认(按 locale.preference 选 zh/en)
+ * @param {z.infer<typeof Config>} config
+ * @param {{ get?: (ns: string) => unknown } | undefined} settings
+ */
+function resolvePersona(config, settings) {
   if (config.personaFile) {
     try {
       return readFileSync(config.personaFile, 'utf8')
@@ -99,7 +147,14 @@ function resolvePersona(config) {
       console.error(`[im-bridge] 读取 personaFile 失败: ${e.message}`)
     }
   }
-  return config.persona
+  if (config.persona !== '') return config.persona
+  const file = readLocalePreference(settings) === 'en' ? DEFAULT_PERSONA_EN : DEFAULT_PERSONA_ZH
+  try {
+    return stripLeadingHashComments(readFileSync(file, 'utf8'))
+  } catch (e) {
+    console.error(`[im-bridge] 读取默认人设失败: ${e.message}`)
+    return ''
+  }
 }
 
 export function apply(ctx, config) {
@@ -116,7 +171,10 @@ export function apply(ctx, config) {
   // 避免 apply 时 settings 尚未挂载导致命名空间缺失(GUI 卡片显示"命名空间不可用")。
   // 缺凭证时仍注册, 便于在 Settings 补齐后再重启启用企微。
   let scope
+  /** @type {{ get: (ns: string) => unknown } | undefined} */
+  let settings
   ctx.inject(['settings'], (sctx) => {
+    settings = sctx.settings
     scope = sctx.settings.register('im-bridge', Config, { base: { ...config } })
   })
   /** 有效配置: 默认值 → cordis patch(base) → 用户 settings.yaml, 热更新 */
@@ -135,7 +193,6 @@ export function apply(ctx, config) {
 
     // per-sender 持久会话状态: sender -> { agent, sessionId, queue, lastActivity }
     const senders = new Map()
-    const persona = resolvePersona(cfg())
 
     /** 创建(或复用)某发送者的 Agent(会话/上下文持久于进程内) */
     async function ensureAgent(sender) {
@@ -158,15 +215,14 @@ export function apply(ctx, config) {
           const selected = { current: selection, assembled: undefined }
           installModelSelection(agentCtx, selected)
           if (presets !== undefined) await presets.mount(agentCtx, resolvedId)
-          if (persona !== '') {
-            agentCtx.inject(['systemPrompt'], (promptCtx) => {
-              promptCtx.systemPrompt.section({
-                name: 'deployment:persona', // 同名 scoped section 覆盖部署 persona(仅本 agent)
-                order: 0,
-                text: persona,
-              })
+          // 每次 assemble 再解析: 默认人设跟 Host locale.preference; 覆盖文件不跟切
+          agentCtx.inject(['systemPrompt'], (promptCtx) => {
+            promptCtx.systemPrompt.section({
+              name: 'deployment:persona', // 同名 scoped section 覆盖部署 persona(仅本 agent)
+              order: 0,
+              text: () => resolvePersona(cfg(), settings),
             })
-          }
+          })
         },
       })
       st = { agent, sessionId, queue: Promise.resolve(), lastActivity: '' }

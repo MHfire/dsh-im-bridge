@@ -30,7 +30,7 @@
 - ✅ **WebSocket 直连**：无需公网 URL、无需消息加解密、无需 IP 白名单
 - ✅ **进程内 Agent**：不 spawn 子进程，会话与 GUI 同进程注册，**实时可见、可续聊**
 - ✅ **per-sender 持久会话**：同一企业微信用户复用同一会话，有上下文记忆
-- ✅ **人设可定制**：`persona.md` 即机器人「人设」，作为系统提示词注入每个会话
+- ✅ **人设可定制**：包内中/英默认人设跟 Settings 语言；可用 profile 同目录 `persona.md` 覆盖
 - ✅ **配置热生效**：`allowFrom` / `agentTimeoutSec` / `startHint` 可在 Settings 插件配置页或 `settings.yaml` 修改，无需重启
 - ✅ **流式动画 + 执行简报**：处理中显示阶段状态/进度条/剩余估算，完成附耗时简报
 - ✅ 自动认证 / 心跳保活 / 断线指数退避重连（SDK 内置）
@@ -123,12 +123,12 @@ dsh plugin --profile web add <本仓库路径>/plugin
 
 ## 🤖 人设提示词（persona.md）
 
-`persona.md` 是机器人的**人设**（角色设定与行为规范），作为系统提示词注入每个会话，决定机器人以什么身份、按什么规则回答。
+优先级：`personaFile` → `persona` 字符串 → 包内默认（按 Host `locale.preference` 选中/英，未设置则中文）。
 
-- 插件通过 `personaFile` 指向该文件；想换人设就改这里
-- 模板见 `plugin/persona.example.md`（示例为"办公助手"人设，可改为客服、技术专家等）
-- **`persona.md` 可能包含你的环境凭据等敏感信息，不入库**：复制 `plugin/persona.example.md` 为 `plugin/persona.md` 后按需填写
-- 提示词支持 `{{model}}` / `{{cwd}}` 两个占位符（未知变量会直接报错）
+- **推荐**：在 `$DSH_HOME/profiles/<name>/` 与 `cordis.patch.yml` 同目录放置 `persona.md`，用绝对路径配置 `personaFile`（覆盖不跟语言切换）
+- 默认：`plugin/persona.default.md` / `plugin/persona.default.en.md`；模板：`plugin/persona.example.md`
+- **含环境凭据的人设文件不入库**，请勿提交
+- 支持 `{{model}}` / `{{cwd}}` 占位符（未知变量会直接报错）
 
 ## 🛠️ 旧版 bridge.js（legacy）
 

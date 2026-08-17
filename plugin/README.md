@@ -50,7 +50,7 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 | `agentTimeoutSec` | 单任务最长执行时间（秒），动画进度条/剩余估算的基准 |
 | `startHint` | 开始处理时的占位提示语 |
 | `agentPreset` | Agent 加入的 preset（默认 `standard`） |
-| `persona` / `personaFile` | 机器人「人设」（系统提示词）；`personaFile` 优先，含敏感信息请勿入库 |
+| `persona` / `personaFile` | 机器人「人设」；优先级：`personaFile` → `persona` → 包内默认（按 Host `locale.preference` 选中/英）；覆盖不跟语言切换；含敏感信息请勿入库 |
 | `maxReplyBytes` | 回复上限（字节，默认 20000） |
 | `deniedMessage` | 非白名单用户的拒绝文案（Settings 可编） |
 | `welcomeMessage` | 进入会话欢迎语（Settings 可编） |
@@ -68,9 +68,20 @@ thinking:
 
 ## 人设（persona）
 
-`persona.md` 是机器人的「人设」：角色与行为规范，作为系统提示词注入每个会话。
-复制 `persona.example.md` 为 `persona.md` 后填写；支持 `{{model}}` / `{{cwd}}` 占位符。
-该文件可能含环境凭据，已被仓库 `.gitignore` 排除，请勿提交。
+优先级：`personaFile` → `persona` 字符串 → 包内默认人设。
+
+- **包内默认**：[`persona.default.md`](./persona.default.md)（中文）/ [`persona.default.en.md`](./persona.default.en.md)（英文）。按 Host settings `locale.preference`（`zh`|`en`）选择；**未显式选择时回退中文**（Host 看不到仅浏览器决定的语言）。每次 assemble 重新读取，Settings 改语言后下一轮请求生效。
+- **覆盖不跟语言切换**：配置了 `personaFile` / 非空 `persona` 时始终用该内容。
+
+**推荐覆盖方式**：在 `$DSH_HOME/profiles/<name>/` 与 `cordis.patch.yml` 同目录放置 `persona.md`，并在 profile patch 里用绝对路径指向它（相对路径相对进程 cwd，不宜依赖）：
+
+```yaml
+- id: im-bridge
+  config:
+    personaFile: 'C:\\Users\\you\\.dsh\\profiles\\web\\persona.md'
+```
+
+也可复制 [`persona.example.md`](./persona.example.md) 为模板后按环境填写。支持 `{{model}}` / `{{cwd}}` 占位符。含环境凭据的人设文件请勿提交。欢迎语 / 拒绝文案 / 思考动画文案目前仍为中文配置项，不随语言切换。
 
 ## 安全
 
