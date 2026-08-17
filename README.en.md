@@ -112,7 +112,7 @@ Copy `config.example.json` to `config.json` and fill in values (**`config.json` 
 | `agentTimeoutSec` | Max seconds per task |
 | `allowFrom` | Allowed sender userids; empty `[]` = allow everyone |
 | `startHint` | Placeholder text when processing starts |
-| `thinking` | Streaming thinking animation (`phases` / `spin` / `eggs`; see `plugin/README.en.md`) |
+| `thinking` | Streaming animation: tools / model reasoning vs output / timed fallback (see `plugin/README.en.md`) |
 | `deniedMessage` / `welcomeMessage` | Deny text / enter-chat welcome |
 
 > **`patch`** (legacy `bridge.js` only, optional): path to a workspace `--patch` overlay

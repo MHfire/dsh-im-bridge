@@ -54,16 +54,24 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 | `maxReplyBytes` | 回复上限（字节，默认 20000） |
 | `deniedMessage` | 非白名单用户的拒绝文案（Settings 可编） |
 | `welcomeMessage` | 进入会话欢迎语（Settings 可编） |
-| `thinking` | 流式思考动画：`phases` / `spin` / `eggs` / `eggAfterSec` / `intervalMs` / `activityPrefix`；结构请在 profile patch 覆盖，简易卡片不编辑 |
+| `thinking` | 流式动画。优先级：工具活动（`toolLabels`）> 模型流式阶段（`reasoningStatus` / `outputStatus`，来自 `assistant/chunk`）> 时间轴 `phases` 兜底；另有 `spin` / `reasoningSpin` / `outputSpin` / `eggs` 等 |
 
-`thinking.phases` 示例（profile 覆盖时可只改文案）：
+`thinking` 行为：
+
+1. 收到 `reasoning-delta` → 「模型思考中」类文案轮换 + `reasoningSpin`
+2. 收到 `text-delta` → 「正在输出回复」类文案轮换 + `outputSpin`
+3. `tool/call` → `activityPrefix` + 友好名；`tool/result` 短暂完成/失败后清空
+4. 尚无 chunk 时 → 按秒数走 `phases`（与模型是否在推理无关）
 
 ```yaml
 thinking:
   intervalMs: 1500
-  phases:
-    - atSec: 0
-      text: '🤔 正在理解你的需求…'
+  reasoningStatus:
+    - '💭 模型思考中…'
+  outputStatus:
+    - '✍️ 正在输出回复…'
+  toolLabels:
+    pwsh: PowerShell
 ```
 
 ## 人设（persona）

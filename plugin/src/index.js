@@ -21,7 +21,7 @@ import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import { startThinking, sendFinal, truncate, footerOf, fmtDuration, DEFAULT_THINKING } from './wecom.js'
+import { startThinking, sendFinal, truncate, footerOf, fmtDuration, DEFAULT_THINKING, labelTool, pickStatusLine, streamPhaseFromChunk } from './wecom.js'
 
 /** 包根目录(与 persona.default*.md 同级) */
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -50,6 +50,14 @@ const ThinkingConfig = z.object({
   eggAfterSec: z.number().default(DEFAULT_THINKING.eggAfterSec),
   intervalMs: z.number().default(DEFAULT_THINKING.intervalMs),
   activityPrefix: z.string().default(DEFAULT_THINKING.activityPrefix),
+  /** 工具名 → 友好显示名; 与内置表合并, 同名覆盖 */
+  toolLabels: z.dict(String).default(DEFAULT_THINKING.toolLabels),
+  /** 模型推理阶段状态行(轮换) */
+  reasoningStatus: z.array(String).default(DEFAULT_THINKING.reasoningStatus),
+  /** 模型正文输出阶段状态行(轮换) */
+  outputStatus: z.array(String).default(DEFAULT_THINKING.outputStatus),
+  reasoningSpin: z.array(String).default(DEFAULT_THINKING.reasoningSpin),
+  outputSpin: z.array(String).default(DEFAULT_THINKING.outputSpin),
 })
 
 /** 插件配置(zod): 敏感项由 profile 层 patch 或 Settings 提供；缺省时跳过企微连线，不阻塞主进程 */
@@ -225,18 +233,54 @@ export function apply(ctx, config) {
           })
         },
       })
-      st = { agent, sessionId, queue: Promise.resolve(), lastActivity: '' }
+      st = {
+        agent,
+        sessionId,
+        queue: Promise.resolve(),
+        lastActivity: '',
+        activityClearAt: 0,
+        lastToolByCallId: new Map(),
+        modelStreamPhase: 'idle',
+        streamStatusTick: 0,
+      }
       senders.set(sender, st)
       console.log(`[im-bridge] 为 ${sender} 创建会话 ${sessionId}`)
       return st
     }
 
-    // 会话事件 → 真实活动状态(工具调用名), 让动画显示"正在做什么"
+    // 优先级: 工具活动 > 模型流式阶段(reasoning/output) > 时间轴 phases
     ctx.on('session/event', (session, event) => {
-      if (event.type !== 'tool/call') return
-      const prefix = cfg().thinking?.activityPrefix ?? DEFAULT_THINKING.activityPrefix
+      const thinking = cfg().thinking
+      const prefix = thinking?.activityPrefix ?? DEFAULT_THINKING.activityPrefix
+      const flashMs = Number.isFinite(thinking?.intervalMs) && thinking.intervalMs > 0
+        ? thinking.intervalMs
+        : DEFAULT_THINKING.intervalMs
       for (const st of senders.values()) {
-        if (st.sessionId === session.id) st.lastActivity = `${prefix}${event.data.name}`
+        if (st.sessionId !== session.id) continue
+        if (event.type === 'assistant/chunk') {
+          const next = streamPhaseFromChunk(event.data.chunk)
+          if (next !== null) st.modelStreamPhase = next
+          continue
+        }
+        if (event.type === 'tool/call') {
+          const name = event.data.name
+          if (event.data.callId !== undefined) st.lastToolByCallId.set(event.data.callId, name)
+          st.activityClearAt = 0
+          st.lastActivity = `${prefix}${labelTool(name, thinking)}`
+          return
+        }
+        if (event.type === 'tool/result') {
+          const callId = event.data.message?.source?.callId
+          const rawName = (callId !== undefined && st.lastToolByCallId.get(callId))
+            || [...st.lastToolByCallId.values()].at(-1)
+            || ''
+          if (callId !== undefined) st.lastToolByCallId.delete(callId)
+          const label = labelTool(rawName || '工具', thinking)
+          const failed = event.data.error !== undefined
+          st.lastActivity = failed ? `❌ ${label} 失败` : `✅ ${label} 完成`
+          st.activityClearAt = Date.now() + flashMs
+          st.modelStreamPhase = 'idle'
+        }
       }
     })
 
@@ -248,12 +292,41 @@ export function apply(ctx, config) {
       const startedAt = Date.now()
       const streamId = generateReqId('stream')
       let stopThinking = null
+      st.lastActivity = ''
+      st.activityClearAt = 0
+      st.lastToolByCallId.clear()
+      st.modelStreamPhase = 'idle'
+      st.streamStatusTick = 0
       try {
         await ws.replyStream(frame, streamId, cfg().startHint, false)
         stopThinking = startThinking(
           ws, frame, streamId, startedAt, cfg().agentTimeoutSec,
-          () => st.lastActivity || '',
+          () => {
+            if (st.activityClearAt > 0 && Date.now() >= st.activityClearAt) {
+              st.lastActivity = ''
+              st.activityClearAt = 0
+            }
+            if (st.lastActivity) return st.lastActivity
+            const thinking = cfg().thinking
+            const tick = st.streamStatusTick++
+            if (st.modelStreamPhase === 'reasoning') {
+              return pickStatusLine(
+                thinking?.reasoningStatus,
+                DEFAULT_THINKING.reasoningStatus,
+                tick,
+              )
+            }
+            if (st.modelStreamPhase === 'outputting') {
+              return pickStatusLine(
+                thinking?.outputStatus,
+                DEFAULT_THINKING.outputStatus,
+                tick,
+              )
+            }
+            return ''
+          },
           cfg().thinking,
+          () => (st.lastActivity ? 'idle' : st.modelStreamPhase),
         )
       } catch (e) {
         console.error(`[im-bridge] 占位回复失败: ${e.message}`)

@@ -18,6 +18,38 @@
           eggAfterSec: 240
           intervalMs: 1500
           activityPrefix: '🛠️ 正在执行 '
+          toolLabels:
+            pwsh: PowerShell
+            bash: Shell
+            read_file: 读文件
+            read: 读文件
+            write_file: 写文件
+            write: 写文件
+            edit_file: 编辑文件
+            str_replace: 编辑文件
+            glob: 查找文件
+            grep: 搜索内容
+            web_search: 网页搜索
+            web_fetch: 抓取网页
+            todo_write: 更新待办
+          reasoningStatus:
+            - '💭 助手思考中…'
+            - '🧠 深入分析中…'
+            - '✨ 梳理思路中…'
+          outputStatus:
+            - '✍️ 正在输出回复…'
+            - '📝 组织文字中…'
+            - '💬 生成回答中…'
+          reasoningSpin:
+            - '💭'
+            - '🧠'
+            - '🌀'
+            - '✨'
+          outputSpin:
+            - '✍️'
+            - '📝'
+            - '💬'
+            - '⚡'
           spin:
             - '🧠'
             - '💭'

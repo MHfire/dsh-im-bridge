@@ -54,16 +54,24 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 | `maxReplyBytes` | Reply size cap in bytes (default 20000) |
 | `deniedMessage` | Reply when the sender is not on `allowFrom` (editable in Settings) |
 | `welcomeMessage` | Welcome text on `enter_chat` (editable in Settings) |
-| `thinking` | Streaming “thinking” animation: `phases` / `spin` / `eggs` / `eggAfterSec` / `intervalMs` / `activityPrefix`; override via profile patch (not the simple Settings card) |
+| `thinking` | Streaming animation. Precedence: tool activity (`toolLabels`) > model stream phase (`reasoningStatus` / `outputStatus` from `assistant/chunk`) > timed `phases` fallback; also `spin` / `reasoningSpin` / `outputSpin` / `eggs` |
 
-Example `thinking.phases` override:
+Behavior:
+
+1. `reasoning-delta` → rotating “model thinking” copy + `reasoningSpin`
+2. `text-delta` → rotating “writing reply” copy + `outputSpin`
+3. `tool/call` → `activityPrefix` + friendly label; brief done/fail after `tool/result`
+4. No chunks yet → timed `phases` (unrelated to whether the model is reasoning)
 
 ```yaml
 thinking:
   intervalMs: 1500
-  phases:
-    - atSec: 0
-      text: '🤔 Understanding your request…'
+  reasoningStatus:
+    - '💭 Model thinking…'
+  outputStatus:
+    - '✍️ Writing reply…'
+  toolLabels:
+    pwsh: PowerShell
 ```
 
 ## Persona

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * wecom.js — 企业微信交互封装: 流式动画(v3) + 最终简报 + 发送助手。
  * 逻辑移植自旧版 im-bridge/bridge.js, 改为纯 ESM 供插件使用。
  */
@@ -6,6 +6,7 @@ import { generateReqId } from '@wecom/aibot-node-sdk'
 
 /** 流式思考动画的默认素材(可被 Config.thinking / cordis patch 覆盖) */
 export const DEFAULT_THINKING = {
+  /** 尚无 assistant/chunk 时的时间轴兜底文案(与模型是否在推理无关) */
   phases: [
     { atSec: 0, text: '🤔 正在理解你的需求…' },
     { atSec: 8, text: '📋 正在整理任务清单' },
@@ -26,6 +27,73 @@ export const DEFAULT_THINKING = {
   eggAfterSec: 240,
   intervalMs: 1500,
   activityPrefix: '🛠️ 正在执行 ',
+  /** 收到 reasoning-delta 时的状态行文案(按刷新轮换) */
+  reasoningStatus: ['💭 模型思考中…', '🧠 深入分析中…', '✨ 梳理思路中…'],
+  /** 收到 text-delta 时的状态行文案(按刷新轮换) */
+  outputStatus: ['✍️ 正在输出回复…', '📝 组织文字中…', '💬 生成回答中…'],
+  /** 思考阶段专用旋转表情 */
+  reasoningSpin: ['💭', '🧠', '🌀', '✨'],
+  /** 输出阶段专用旋转表情 */
+  outputSpin: ['✍️', '📝', '💬', '⚡'],
+  /** 工具名 → 企微活动文案友好名(可被 thinking.toolLabels 覆盖) */
+  toolLabels: {
+    pwsh: 'PowerShell',
+    bash: 'Shell',
+    read_file: '读文件',
+    read: '读文件',
+    write_file: '写文件',
+    write: '写文件',
+    edit_file: '编辑文件',
+    str_replace: '编辑文件',
+    glob: '查找文件',
+    grep: '搜索内容',
+    web_search: '网页搜索',
+    web_fetch: '抓取网页',
+    todo_write: '更新待办',
+  },
+}
+
+/**
+ * 将工具注册名映射为企微可见友好名。
+ * @param {string} name - 工具名(如 pwsh)
+ * @param {typeof DEFAULT_THINKING | undefined} thinking - 含可选 toolLabels 覆盖
+ * @returns {string}
+ */
+export function labelTool(name, thinking) {
+  const labels = {
+    ...DEFAULT_THINKING.toolLabels,
+    ...(thinking?.toolLabels && typeof thinking.toolLabels === 'object' ? thinking.toolLabels : {}),
+  }
+  return labels[name] || name
+}
+
+/**
+ * 从 string | string[] 配置中按 tick 取一条状态文案。
+ * @param {string | string[] | undefined} value
+ * @param {string[]} fallback
+ * @param {number} tick
+ */
+export function pickStatusLine(value, fallback, tick) {
+  const list = Array.isArray(value) && value.length > 0
+    ? value
+    : (typeof value === 'string' && value !== '' ? [value] : fallback)
+  return list[Math.abs(tick) % list.length]
+}
+
+/**
+ * 根据 assistant/chunk 判别模型流式阶段。
+ * @param {{ type?: string, blockType?: string } | undefined} chunk
+ * @returns {'reasoning' | 'outputting' | null}
+ */
+export function streamPhaseFromChunk(chunk) {
+  if (!chunk || typeof chunk !== 'object') return null
+  if (chunk.type === 'reasoning-delta') return 'reasoning'
+  if (chunk.type === 'text-delta') return 'outputting'
+  if (chunk.type === 'block-start') {
+    if (chunk.blockType === 'reasoning') return 'reasoning'
+    if (chunk.blockType === 'text') return 'outputting'
+  }
+  return null
 }
 
 /** 毫秒 → 人类可读时长(如 "9 分 47 秒") */
@@ -65,11 +133,18 @@ export function truncate(text, max) {
  * 每 intervalMs 更新一次同一条流式消息(共用 streamId), 直到 agent 完成。返回停止函数。
  * @param {() => string} [activity] - 可选: 返回当前真实活动描述, 覆盖阶段台词。
  * @param {typeof DEFAULT_THINKING} [thinking] - 动画素材; 缺省用 {@link DEFAULT_THINKING}。
+ * @param {() => 'idle' | 'reasoning' | 'outputting' | string} [getStreamPhase] - 模型流式阶段, 影响旋转表情池。
  */
-export function startThinking(ws, frame, streamId, startedAt, timeoutSec, activity, thinking) {
+export function startThinking(ws, frame, streamId, startedAt, timeoutSec, activity, thinking, getStreamPhase) {
   const t = { ...DEFAULT_THINKING, ...(thinking || {}) }
   const phases = Array.isArray(t.phases) && t.phases.length > 0 ? t.phases : DEFAULT_THINKING.phases
   const spin = Array.isArray(t.spin) && t.spin.length > 0 ? t.spin : DEFAULT_THINKING.spin
+  const reasoningSpin = Array.isArray(t.reasoningSpin) && t.reasoningSpin.length > 0
+    ? t.reasoningSpin
+    : DEFAULT_THINKING.reasoningSpin
+  const outputSpin = Array.isArray(t.outputSpin) && t.outputSpin.length > 0
+    ? t.outputSpin
+    : DEFAULT_THINKING.outputSpin
   const eggs = Array.isArray(t.eggs) && t.eggs.length > 0 ? t.eggs : DEFAULT_THINKING.eggs
   const eggAfterSec = Number.isFinite(t.eggAfterSec) ? t.eggAfterSec : DEFAULT_THINKING.eggAfterSec
   const intervalMs = Number.isFinite(t.intervalMs) && t.intervalMs > 0 ? t.intervalMs : DEFAULT_THINKING.intervalMs
@@ -92,7 +167,13 @@ export function startThinking(ws, frame, streamId, startedAt, timeoutSec, activi
     const egg = secs >= eggAfterSec && eggs.length > 0
       ? `\n${eggs[Math.floor(secs / 60) % eggs.length]}`
       : ''
-    const emoji = spin[i % spin.length]
+    const phase = getStreamPhase ? getStreamPhase() : 'idle'
+    const emojiPool = phase === 'reasoning'
+      ? reasoningSpin
+      : phase === 'outputting'
+        ? outputSpin
+        : spin
+    const emoji = emojiPool[i % emojiPool.length]
     i++
     const status = live || stage
     ws.replyStream(frame, streamId, `${emoji} ${status}   ⏱ ${secs} 秒${remainTxt}${bar}${egg}`, false).catch(() => {})
