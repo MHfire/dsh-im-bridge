@@ -16,15 +16,14 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 # dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
 ```
 
-在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中配置：
+在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中补密钥即可（其余项已有 bundle 默认，可按需覆盖）：
 
 ```yaml
 - id: im-bridge
   config:
     botId: "<你的 BotID>"
     secret: "<你的 Secret>"
-    workspace: "<Agent 工作目录>"
-    personaFile: "<绝对路径>/persona.md"
+    # 可选：workspace / personaFile 等，见下方配置项
 ```
 
 重启 dsh 进程即可使用（例如 `dsh web` / `pnpm dsh web`）。
@@ -40,6 +39,8 @@ dsh plugin --profile web add <本包路径>
 未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；Settings → 插件配置页仍可填写，保存后**重启**进程才会连接（本版本不做热启连）。
 
 ## 配置项
+
+bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默认值；下表为完整说明。
 
 | 字段 | 说明 |
 |---|---|

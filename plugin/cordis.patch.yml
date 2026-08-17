@@ -1,6 +1,14 @@
-# dsh-im-bridge bundle patch: 声明插件行。
-# 密钥(botId/secret)等敏感配置由 profile 层($DSH_HOME/profiles/web/cordis.patch.yml)覆盖,
-# 不要写在这里。
+# dsh-im-bridge bundle patch: 插入插件行并给出非密钥默认配置。
+# botId/secret 由 profile 层 ($DSH_HOME/profiles/<name>/cordis.patch.yml) 或 Settings 覆盖。
 - insert:
     - id: im-bridge
       name: '@mhfire/dsh-im-bridge'
+      config:
+        workspace: !!js process.cwd()
+        allowFrom: []
+        startHint: '🧠 正在思考...'
+        agentTimeoutSec: 600
+        agentPreset: standard
+        persona: ''
+        personaFile: ''
+        maxReplyBytes: 20000

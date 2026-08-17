@@ -78,13 +78,12 @@ flowchart LR
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
 
-# 2) 在 $DSH_HOME/profiles/web/cordis.patch.yml 中配置插件行
+# 2) 在 $DSH_HOME/profiles/web/cordis.patch.yml 中补密钥（其余为 bundle 默认，可按需覆盖）
 # - id: im-bridge
 #   config:
 #     botId: "<你的 BotID>"
 #     secret: "<你的 Secret>"
-#     workspace: "<你的工作区>"
-#     personaFile: "<绝对路径>/persona.md"
+#     # 可选：workspace / personaFile 等
 
 # 3) 重启 dsh 进程（如 dsh web / pnpm dsh web）
 # 4) 在企业微信给机器人发消息即可使用

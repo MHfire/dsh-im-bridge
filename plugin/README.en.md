@@ -16,15 +16,14 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 # dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
 ```
 
-Configure `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile):
+In `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile), supply credentials only (other fields ship as bundle defaults and can be overridden):
 
 ```yaml
 - id: im-bridge
   config:
     botId: "<your BotID>"
     secret: "<your Secret>"
-    workspace: "<Agent working directory>"
-    personaFile: "<absolute-path>/persona.md"
+    # optional: workspace / personaFile / … — see Configuration below
 ```
 
 Restart dsh to apply (e.g. `dsh web` / `pnpm dsh web`).
@@ -40,6 +39,8 @@ dsh plugin --profile web add <package-path>
 If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can fill credentials in Settings → Plugins; **restart** is required to connect (this release does not hot-start the WebSocket).
 
 ## Configuration
+
+The bundle `cordis.patch.yml` supplies defaults for every field except `botId` / `secret`. Full field list:
 
 | Field | Description |
 |---|---|

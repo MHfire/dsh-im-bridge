@@ -78,13 +78,13 @@ flowchart LR
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
 
-# 2) Configure the plugin row in $DSH_HOME/profiles/web/cordis.patch.yml
+# 2) In $DSH_HOME/profiles/web/cordis.patch.yml, supply credentials
+#    (other fields ship as bundle defaults; override as needed)
 # - id: im-bridge
 #   config:
 #     botId: "<your BotID>"
 #     secret: "<your Secret>"
-#     workspace: "<your workspace>"
-#     personaFile: "<absolute-path>/persona.md"
+#     # optional: workspace / personaFile / …
 
 # 3) Restart dsh (e.g. dsh web / pnpm dsh web)
 # 4) Message the bot in WeCom
