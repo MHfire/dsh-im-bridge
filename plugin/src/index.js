@@ -163,13 +163,13 @@ export function apply(ctx, config) {
       }
     })
 
-    const { default: AiBot } = await import('@wecom/aibot-node-sdk')
+    const { default: AiBot, generateReqId } = await import('@wecom/aibot-node-sdk')
 
     /** 处理一条消息: 动画 → followup → 汇总 → 简报 */
     async function handle(frame, sender, content) {
       const st = await ensureAgent(sender)
       const startedAt = Date.now()
-      const streamId = AiBot.generateReqId('stream')
+      const streamId = generateReqId('stream')
       let stopThinking = null
       try {
         await ws.replyStream(frame, streamId, cfg().startHint, false)
@@ -217,7 +217,7 @@ export function apply(ctx, config) {
       if (!content) return
       const sender = frame.body?.sender?.userid || frame.body?.from?.userid || frame.body?.userid || 'unknown'
       if (cfg().allowFrom.length > 0 && !cfg().allowFrom.includes(sender)) {
-        ws.replyStream(frame, AiBot.generateReqId('stream'), '无权访问本服务', true).catch(() => {})
+        ws.replyStream(frame, generateReqId('stream'), '无权访问本服务', true).catch(() => {})
         return
       }
       console.log(`[im-bridge] 收到 from=${sender}: ${content.slice(0, 100)}`)

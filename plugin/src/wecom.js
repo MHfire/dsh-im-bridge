@@ -2,7 +2,7 @@
  * wecom.js — 企业微信交互封装: 流式动画(v3) + 最终简报 + 发送助手。
  * 逻辑移植自旧版 im-bridge/bridge.js, 改为纯 ESM 供插件使用。
  */
-import AiBot from '@wecom/aibot-node-sdk'
+import { generateReqId } from '@wecom/aibot-node-sdk'
 
 /** 毫秒 → 人类可读时长(如 "9 分 47 秒") */
 export function fmtDuration(ms) {
@@ -86,6 +86,6 @@ export async function sendFinal(ws, frame, streamId, content) {
     await ws.replyStream(frame, streamId, content, true)
   } catch (e) {
     console.error(`[im-bridge] 原流最终回复失败(${e.message}), 尝试新流...`)
-    await ws.replyStream(frame, AiBot.generateReqId('stream'), content, true)
+    await ws.replyStream(frame, generateReqId('stream'), content, true)
   }
 }
