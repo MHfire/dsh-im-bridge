@@ -50,11 +50,22 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 | `agentTimeoutSec` | 单任务最长执行时间（秒），动画进度条/剩余估算的基准 |
 | `startHint` | 开始处理时的占位提示语 |
 | `agentPreset` | Agent 加入的 preset（默认 `standard`） |
+| `provider` / `model` | 企微专用模型；**两者都非空**才覆盖，否则跟随 GUI 的 `agent-default-model`；只填一项会告警并回退。Settings 可编，只影响之后新建的发送者会话 |
+| `reasoningEffort` | 覆盖生效时可选的推理强度；未覆盖模型时忽略 |
 | `persona` / `personaFile` | 机器人「人设」；优先级：`personaFile` → `persona` → 包内默认（按 Host `locale.preference` 选中/英）；覆盖不跟语言切换；含敏感信息请勿入库 |
 | `maxReplyBytes` | 回复上限（字节，默认 20000） |
 | `deniedMessage` | 非白名单用户的拒绝文案（Settings 可编） |
 | `welcomeMessage` | 进入会话欢迎语（Settings 可编） |
 | `thinking` | 流式动画。优先级：工具活动（`toolLabels`）> 模型流式阶段（`reasoningStatus` / `outputStatus`，来自 `assistant/chunk`）> 时间轴 `phases` 兜底；另有 `spin` / `reasoningSpin` / `outputSpin` / `eggs` 等 |
+
+企微与 GUI 使用不同模型时，在 profile `cordis.patch.yml` 同时填写：
+
+```yaml
+- id: im-bridge
+  config:
+    provider: deepseek-official
+    model: deepseek-reasoner
+```
 
 `thinking` 行为：
 

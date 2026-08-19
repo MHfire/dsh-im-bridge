@@ -9,6 +9,10 @@
         startHint: '🧠 正在思考...'
         agentTimeoutSec: 600
         agentPreset: standard
+        # 空 = 跟随 GUI 的 agent-default-model; provider 与 model 同时填写才只影响企微
+        provider: ''
+        model: ''
+        reasoningEffort: ''
         persona: ''
         personaFile: ''
         maxReplyBytes: 20000

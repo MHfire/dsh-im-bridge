@@ -1,6 +1,6 @@
 {
   "name": "@mhfire/dsh-im-bridge",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接插件：进程内创建 Agent(per-sender 持久会话)，会话在 GUI 实时可见；含 Settings 插件配置卡片",
   "license": "MIT",
   "repository": {

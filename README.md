@@ -109,6 +109,7 @@ dsh plugin --profile web add <本仓库路径>/plugin
 | `workspace` | Agent 的工作目录（会话 cwd） |
 | `dshCli` | `dsh` CLI 的入口脚本路径（仅旧版 `bridge.js` 需要） |
 | `agentTimeoutSec` | 单任务最长执行时间（秒） |
+| `provider` / `model` | 企微专用模型；两者都填才覆盖 GUI 的 `agent-default-model` |
 | `allowFrom` | 允许的发送者 userid 列表；留空 `[]` = 允许所有人 |
 | `startHint` | 开始处理时的占位提示语 |
 | `thinking` | 流式动画：工具 / 模型推理与输出阶段 / 时间轴兜底（见 `plugin/README.md`） |

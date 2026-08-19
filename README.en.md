@@ -110,6 +110,7 @@ Copy `config.example.json` to `config.json` and fill in values (**`config.json` 
 | `workspace` | Agent working directory (session cwd) |
 | `dshCli` | Path to the `dsh` CLI entry (legacy `bridge.js` only) |
 | `agentTimeoutSec` | Max seconds per task |
+| `provider` / `model` | WeCom-only model; both required to override the GUI `agent-default-model` |
 | `allowFrom` | Allowed sender userids; empty `[]` = allow everyone |
 | `startHint` | Placeholder text when processing starts |
 | `thinking` | Streaming animation: tools / model reasoning vs output / timed fallback (see `plugin/README.en.md`) |

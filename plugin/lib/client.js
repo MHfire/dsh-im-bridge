@@ -20,6 +20,8 @@ var FIELDS = [
   { field: 'startHint', label: '开始处理时的占位提示', kind: 'text' },
   { field: 'deniedMessage', label: '非白名单拒绝文案', kind: 'text' },
   { field: 'welcomeMessage', label: '进入会话欢迎语', kind: 'text' },
+  { field: 'provider', label: '企微专用 provider（空 = 跟随 GUI 默认模型）', kind: 'text' },
+  { field: 'model', label: '企微专用 model（与 provider 同时填写才生效）', kind: 'text' },
 ];
 
 function fmt(f, v) {

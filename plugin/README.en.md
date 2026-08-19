@@ -50,11 +50,22 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 | `agentTimeoutSec` | Max seconds per task; also drives progress / ETA |
 | `startHint` | Placeholder text when processing starts |
 | `agentPreset` | Agent preset to mount (default `standard`) |
+| `provider` / `model` | WeCom-only model; **both must be non-empty** to override, otherwise follow the GUI `agent-default-model`. Filling only one warns and falls back. Editable in Settings; applies to later new sender sessions only |
+| `reasoningEffort` | Optional effort when the WeCom override is in effect; ignored otherwise |
 | `persona` / `personaFile` | Bot persona; precedence: `personaFile` → `persona` → packaged default (zh/en via Host `locale.preference`); overrides do not follow language; do not commit secrets |
 | `maxReplyBytes` | Reply size cap in bytes (default 20000) |
 | `deniedMessage` | Reply when the sender is not on `allowFrom` (editable in Settings) |
 | `welcomeMessage` | Welcome text on `enter_chat` (editable in Settings) |
 | `thinking` | Streaming animation. Precedence: tool activity (`toolLabels`) > model stream phase (`reasoningStatus` / `outputStatus` from `assistant/chunk`) > timed `phases` fallback; also `spin` / `reasoningSpin` / `outputSpin` / `eggs` |
+
+To give WeCom a different model from the GUI, set both in the profile `cordis.patch.yml`:
+
+```yaml
+- id: im-bridge
+  config:
+    provider: deepseek-official
+    model: deepseek-reasoner
+```
 
 Behavior:
 

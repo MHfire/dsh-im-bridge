@@ -74,6 +74,12 @@ export const Config = z.object({
   agentTimeoutSec: z.number().default(600),
   /** Agent 加入的 preset(web profile 下默认 standard) */
   agentPreset: z.string().default('standard'),
+  /** 企微专用 provider; 与 model 同时非空才覆盖 GUI 共享的 agent-default-model */
+  provider: z.string().default(''),
+  /** 企微专用 model; 与 provider 同时非空才生效 */
+  model: z.string().default(''),
+  /** 覆盖生效时可选的推理强度; provider/model 未覆盖时忽略 */
+  reasoningEffort: z.string().default(''),
   /** 覆盖包内默认人设的文本(可选; 为空且无 personaFile 时按 locale 选默认文件) */
   persona: z.string().default(''),
   /** 从文件读取人设(可选; 优先于 persona; 不跟语言切换; 推荐与 profile 的 cordis.patch.yml 同目录) */
@@ -165,6 +171,26 @@ function resolvePersona(config, settings) {
   }
 }
 
+/**
+ * 解析新会话的模型: provider 与 model 都非空时用企微自己的一对(可带 reasoningEffort),
+ * 否则回退 GUI 共享的 agent-default-model。只填一项视为未覆盖并告警, 避免半残选择。
+ * @param {z.infer<typeof Config>} config
+ * @param {{ currentSelection: () => { provider: string, model: string, reasoningEffort?: string } }} defaultModel
+ * @returns {{ provider: string, model: string, reasoningEffort?: string }}
+ */
+function resolveSelection(config, defaultModel) {
+  const provider = config.provider.trim()
+  const model = config.model.trim()
+  if (provider !== '' && model !== '') {
+    const effort = config.reasoningEffort.trim()
+    return effort === '' ? { provider, model } : { provider, model, reasoningEffort: effort }
+  }
+  if (provider !== '' || model !== '') {
+    console.warn('[im-bridge] provider/model 需同时填写才覆盖企微模型, 已回退 agent-default-model。')
+  }
+  return defaultModel.currentSelection()
+}
+
 export function apply(ctx, config) {
   const agents = ctx.get('agents')
   const sessions = ctx.get('sessions')
@@ -207,7 +233,7 @@ export function apply(ctx, config) {
       let st = senders.get(sender)
       if (st !== undefined && st.agent !== undefined) return st
       const sessionId = SessionId(`session-${randomUUID()}`)
-      const selection = defaultModel.currentSelection()
+      const selection = resolveSelection(cfg(), defaultModel)
       // 有 preset roster 的部署(如 web profile)必须在 setup 里 mount,
       // 否则 agent 看不到任何工具(模型只能编造工具调用)。
       const presets = ctx.get('agentPresets')
