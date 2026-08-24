@@ -38,7 +38,25 @@ Install from this repo’s `plugin/` directory or a `file:` path:
 dsh plugin --profile web add <package-path>
 ```
 
-If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them at the top of the Settings → Plugins card (same user layer as the profile patch); the badge becomes “Configured” after save. Changing credentials still requires a **restart** to connect (this release does not hot-reconnect).
+If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them on the Settings plugin card (see the next section).
+
+## Settings plugin card
+
+After the plugin is installed and `dsh web` is running, open **Settings → Plugins → Plugin configuration** and expand **WeCom Bridge** (same card chrome as Shell / Agent loop / Web search). **Save** writes the user layer of `settings.yaml`, the same layer as the profile `cordis.patch.yml`. **Discard** drops unsaved drafts. Fields marked **Overridden** can be **Reset** to the bundle default.
+
+Fields, top to bottom:
+
+| Card control | Config key | After save |
+|---|---|---|
+| Bot ID / Secret | `botId` / `secret` | Badge becomes “Configured”; a **process restart** is required to open the WebSocket. Inputs are password fields; stored literals never ride the wire. A **blank save does not clear** a stored credential |
+| Allowed sender userids | `allowFrom` | Applies on the next message; comma-separated, empty = allow everyone |
+| Task timeout (seconds) | `agentTimeoutSec` | Applies on the next message |
+| Placeholder while thinking | `startHint` | Applies on the next message |
+| Denied-sender reply | `deniedMessage` | Applies on the next message |
+| Welcome message | `welcomeMessage` | Applies on the next message |
+| WeCom-only provider / model | `provider` / `model` | Applies only to **later new** sender sessions; both must be set to override, otherwise the GUI default model is used |
+
+`workspace`, `agentPreset`, `persona` / `personaFile`, `thinking`, `maxReplyBytes`, and `reasoningEffort` are not on the card; set them in the profile patch or the table below. This release does not hot-reconnect credentials.
 
 ## Configuration
 

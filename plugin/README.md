@@ -38,7 +38,25 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 dsh plugin --profile web add <本包路径>
 ```
 
-未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在 Settings → 插件配置卡片顶部填写，保存后徽章变为「已配置」，与 profile patch 同一用户层。改凭证仍要**重启**进程才会连接（本版本不做热重连）。
+未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在 Settings 插件配置卡填写（见下节）。
+
+## Settings 插件配置卡
+
+安装插件并启动 `dsh web` 后，打开 **设置 → 插件 → 插件配置**，展开 **企业微信桥接**（与「终端 / Agent 循环 / 网页搜索」同一组卡片）。改完点右下角 **保存** 写入 `settings.yaml` 用户层，与 profile `cordis.patch.yml` 同一层；**放弃** 丢掉未保存草稿。带「已覆盖」的字段可 **重置** 回 bundle 默认。
+
+卡片字段自上而下：
+
+| 卡片项 | 对应配置 | 保存后 |
+|---|---|---|
+| Bot ID / Secret | `botId` / `secret` | 徽章变为「已配置」；**须重启进程** 才会连 WebSocket。输入框为密码框，线上看不到已存字面值；**留空再保存不会清空**已存凭证 |
+| 允许的发送者 userid | `allowFrom` | 下一轮消息生效；逗号分隔，空 = 允许所有人 |
+| 单任务超时（秒） | `agentTimeoutSec` | 下一轮消息生效 |
+| 开始处理时的占位提示 | `startHint` | 下一轮消息生效 |
+| 非白名单拒绝文案 | `deniedMessage` | 下一轮消息生效 |
+| 进入会话欢迎语 | `welcomeMessage` | 下一轮消息生效 |
+| 企微专用 provider / model | `provider` / `model` | 只影响之后**新建**的发送者会话；须两项都填才覆盖，否则跟随 GUI 默认模型 |
+
+`workspace`、`agentPreset`、`persona` / `personaFile`、`thinking`、`maxReplyBytes`、`reasoningEffort` 不在卡片上，仍在 profile patch 或下表中配置。本版本不做凭证热重连。
 
 ## 配置项
 
