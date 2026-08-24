@@ -8,6 +8,18 @@
 
 Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。卡片可填 `botId` / `secret`，与 profile patch 写入同一用户层；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
 
+## 兼容的 DeepSeek Harness 版本
+
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.2.0 按实际调用的 API 对齐已发布 tag：
+
+| DSH | 本包 |
+|---|---|
+| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8)、[0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1)、[0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | 可适配（对照开发的是 0.1.1-rc.2 一线） |
+| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) 及更早 | 不可适配。rc.7 已有插件配置卡槽位和 `dsh plugin add`，但浏览器没有 `settingsScope.describe()`，配置卡加载和凭证「已配置」徽章会失败 |
+| 更新的 RC / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
+
+建议把 `dsh` 钉在 `0.1.0-rc.8` 及以上，例如 `npx @deepseek-ai/dsh@0.1.1-rc.2 web`，不要只跑浮动的 `latest`。
+
 ## 安装
 
 ### 推荐：从 npm 安装

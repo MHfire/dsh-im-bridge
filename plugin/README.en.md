@@ -8,6 +8,18 @@ Creates Agents **in-process** inside a dsh profile (no child-process spawn): per
 
 The Host half registers the `im-bridge` namespace through `installSettingsSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. The card can set `botId` / `secret` on the same user layer as the profile patch. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
 
+## Compatible DeepSeek Harness versions
+
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.2.0 is aligned to published tags by the APIs it actually calls:
+
+| DSH | This package |
+|---|---|
+| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8), [0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1), [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | Compatible (developed against the 0.1.1-rc.2 line) |
+| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) and earlier | Not compatible. rc.7 already has the plugin settings-card slot and `dsh plugin add`, but the browser has no `settingsScope.describe()`, so the card and the credential “Configured” badges fail |
+| Newer RCs / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
+
+Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2 web`. Do not rely on a floating `latest`.
+
 ## Install
 
 ### Recommended: npm package
