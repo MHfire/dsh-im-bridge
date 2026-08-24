@@ -9,7 +9,7 @@
 Connect WeCom (WeChat Work) AI Bot over a long-lived WebSocket, hand messages to a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Agent, and stream replies back to WeCom.
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.1.2-blue)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -76,7 +76,7 @@ flowchart LR
 ```powershell
 # 1) Install into the target profile (e.g. web)
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
+# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.2.0
 
 # 2) In $DSH_HOME/profiles/web/cordis.patch.yml, supply credentials
 #    (other fields ship as bundle defaults; override as needed)

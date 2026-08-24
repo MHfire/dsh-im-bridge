@@ -9,7 +9,7 @@
 通过企业微信智能机器人的 WebSocket 长连接，把企业微信消息交给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Agent 处理，再将结果流式回复到微信。
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.1.2-blue)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -76,7 +76,7 @@ flowchart LR
 ```powershell
 # 1) 从 npm 装进目标 profile（如 web）
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
+# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.2.0
 
 # 2) 在 $DSH_HOME/profiles/web/cordis.patch.yml 中补密钥（其余为 bundle 默认，可按需覆盖）
 # - id: im-bridge

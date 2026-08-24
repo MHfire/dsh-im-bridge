@@ -4,7 +4,9 @@
 
 企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接 **DSH 插件**。
 
-在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：per-sender 持久会话（同一企业微信用户复用同一会话，有上下文记忆），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`allowFrom` / `agentTimeoutSec` / `startHint`，写入 `settings.yaml` 热生效）。
+在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：per-sender 持久会话（同一企业微信用户复用同一会话，有上下文记忆），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`allowFrom` / `agentTimeoutSec` / `startHint` 等，写入 `settings.yaml` 热生效）。
+
+Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。改 `startHint` 等热字段后下一轮消息即生效；改 `botId` / `secret` 仍需重启进程才会连 WebSocket。
 
 ## 安装
 
@@ -13,7 +15,7 @@
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # 或钉版本：
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.2.0
 ```
 
 在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中补密钥即可（其余项已有 bundle 默认，可按需覆盖）：

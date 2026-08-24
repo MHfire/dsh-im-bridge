@@ -4,7 +4,9 @@
 
 WeCom AI Bot ⇄ DeepSeek Harness Agent bridge — a **DSH plugin**.
 
-Creates Agents **in-process** inside a dsh profile (no child-process spawn): per-sender durable sessions (the same WeCom user reuses one session with memory), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`allowFrom` / `agentTimeoutSec` / `startHint`, written to `settings.yaml` with hot reload).
+Creates Agents **in-process** inside a dsh profile (no child-process spawn): per-sender durable sessions (the same WeCom user reuses one session with memory), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`allowFrom` / `agentTimeoutSec` / `startHint`, and more, written to `settings.yaml` with hot reload).
+
+The Host half registers the `im-bridge` namespace through `installSettingsSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. Live fields such as `startHint` apply on the next message; changing `botId` / `secret` still requires a process restart to open the WebSocket.
 
 ## Install
 
@@ -13,7 +15,7 @@ Creates Agents **in-process** inside a dsh profile (no child-process spawn): per
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # Or pin a version:
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.1.2
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.2.0
 ```
 
 In `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile), supply credentials only (other fields ship as bundle defaults and can be overridden):

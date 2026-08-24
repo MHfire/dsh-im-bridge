@@ -1,12 +1,45 @@
 /**
- * wecom.js — 企业微信交互封装: 流式动画(v3) + 最终简报 + 发送助手。
- * 逻辑移植自旧版 im-bridge/bridge.js, 改为纯 ESM 供插件使用。
+ * WeCom stream helpers: thinking animation, final brief, and send retries.
+ * The WeCom SDK is imported only on the final-send retry path so plugin load
+ * does not pull it in before Loader settle.
  */
-import { generateReqId } from '@wecom/aibot-node-sdk'
 
-/** 流式思考动画的默认素材(可被 Config.thinking / cordis patch 覆盖) */
-export const DEFAULT_THINKING = {
-  /** 尚无 assistant/chunk 时的时间轴兜底文案(与模型是否在推理无关) */
+/** One timed fallback line while no model chunk has arrived. */
+export interface ThinkingPhase {
+  /** Elapsed seconds at which this line becomes current. */
+  atSec: number
+  /** Status text shown in the stream. */
+  text: string
+}
+
+/** Stream-animation copy and timing. */
+export interface ThinkingConfig {
+  /** Timed fallback lines while no `assistant/chunk` has arrived. */
+  phases: ThinkingPhase[]
+  /** Idle-phase spinner glyphs. */
+  spin: string[]
+  /** Extra lines after {@link ThinkingConfig.eggAfterSec}. */
+  eggs: string[]
+  /** Seconds after which eggs start rotating. */
+  eggAfterSec: number
+  /** Stream refresh interval. */
+  intervalMs: number
+  /** Prefix before a friendly tool name. */
+  activityPrefix: string
+  /** Lines rotated during `reasoning-delta`. */
+  reasoningStatus: string[]
+  /** Lines rotated during `text-delta`. */
+  outputStatus: string[]
+  /** Spinner glyphs during reasoning. */
+  reasoningSpin: string[]
+  /** Spinner glyphs during output. */
+  outputSpin: string[]
+  /** Tool registration name → WeCom-visible label. */
+  toolLabels: Record<string, string>
+}
+
+/** Default stream-animation copy; Config / cordis patch may override. */
+export const DEFAULT_THINKING: ThinkingConfig = {
   phases: [
     { atSec: 0, text: '🤔 正在理解你的需求…' },
     { atSec: 8, text: '📋 正在整理任务清单' },
@@ -27,15 +60,10 @@ export const DEFAULT_THINKING = {
   eggAfterSec: 240,
   intervalMs: 1500,
   activityPrefix: '🛠️ 正在执行 ',
-  /** 收到 reasoning-delta 时的状态行文案(按刷新轮换) */
   reasoningStatus: ['💭 模型思考中…', '🧠 深入分析中…', '✨ 梳理思路中…'],
-  /** 收到 text-delta 时的状态行文案(按刷新轮换) */
   outputStatus: ['✍️ 正在输出回复…', '📝 组织文字中…', '💬 生成回答中…'],
-  /** 思考阶段专用旋转表情 */
   reasoningSpin: ['💭', '🧠', '🌀', '✨'],
-  /** 输出阶段专用旋转表情 */
   outputSpin: ['✍️', '📝', '💬', '⚡'],
-  /** 工具名 → 企微活动文案友好名(可被 thinking.toolLabels 覆盖) */
   toolLabels: {
     pwsh: 'PowerShell',
     bash: 'Shell',
@@ -53,13 +81,13 @@ export const DEFAULT_THINKING = {
   },
 }
 
-/**
- * 将工具注册名映射为企微可见友好名。
- * @param {string} name - 工具名(如 pwsh)
- * @param {typeof DEFAULT_THINKING | undefined} thinking - 含可选 toolLabels 覆盖
- * @returns {string}
- */
-export function labelTool(name, thinking) {
+/** WeCom client methods used by the animation and final send. */
+export interface WecomStreamClient {
+  replyStream(frame: unknown, streamId: string, content: string, finish: boolean): Promise<unknown>
+}
+
+/** Map a tool registration name to the WeCom-visible label. */
+export function labelTool(name: string, thinking?: Partial<ThinkingConfig>): string {
   const labels = {
     ...DEFAULT_THINKING.toolLabels,
     ...(thinking?.toolLabels && typeof thinking.toolLabels === 'object' ? thinking.toolLabels : {}),
@@ -67,25 +95,22 @@ export function labelTool(name, thinking) {
   return labels[name] || name
 }
 
-/**
- * 从 string | string[] 配置中按 tick 取一条状态文案。
- * @param {string | string[] | undefined} value
- * @param {string[]} fallback
- * @param {number} tick
- */
-export function pickStatusLine(value, fallback, tick) {
+/** Pick one status line from a configured list, rotating by tick. */
+export function pickStatusLine(
+  value: string | string[] | undefined,
+  fallback: string[],
+  tick: number,
+): string {
   const list = Array.isArray(value) && value.length > 0
     ? value
     : (typeof value === 'string' && value !== '' ? [value] : fallback)
-  return list[Math.abs(tick) % list.length]
+  return list[Math.abs(tick) % list.length] ?? fallback[0] ?? ''
 }
 
-/**
- * 根据 assistant/chunk 判别模型流式阶段。
- * @param {{ type?: string, blockType?: string } | undefined} chunk
- * @returns {'reasoning' | 'outputting' | null}
- */
-export function streamPhaseFromChunk(chunk) {
+/** Infer the model stream phase from one `assistant/chunk` payload. */
+export function streamPhaseFromChunk(
+  chunk: { type?: string; blockType?: string } | undefined,
+): 'reasoning' | 'outputting' | null {
   if (!chunk || typeof chunk !== 'object') return null
   if (chunk.type === 'reasoning-delta') return 'reasoning'
   if (chunk.type === 'text-delta') return 'outputting'
@@ -96,8 +121,8 @@ export function streamPhaseFromChunk(chunk) {
   return null
 }
 
-/** 毫秒 → 人类可读时长(如 "9 分 47 秒") */
-export function fmtDuration(ms) {
+/** Format milliseconds as a short Chinese duration. */
+export function fmtDuration(ms: number): string {
   const s = Math.floor(ms / 1000)
   if (s < 60) return `${s} 秒`
   const m = Math.floor(s / 60)
@@ -105,38 +130,47 @@ export function fmtDuration(ms) {
   return r > 0 ? `${m} 分 ${r} 秒` : `${m} 分钟`
 }
 
-/** 按耗时给个速度评价 */
-export function speedOf(ms) {
+/** Speed label from elapsed milliseconds. */
+export function speedOf(ms: number): string {
   if (ms < 60000) return '⚡ 神速'
   if (ms < 180000) return '🚀 正常速度'
   return '🐢 耗时较长'
 }
 
-/** 执行完成的尾部简报 */
-export function footerOf(ms) {
+/** Footer appended to a completed WeCom reply. */
+export function footerOf(ms: number): string {
   if (ms >= 180000) {
     return `\n\n---\n✅ 执行完成 · 🐢 耗时较长（${fmtDuration(ms)}）\n💡 如需提速，可让我把诊断步骤合并成更少的 SSH 批次`
   }
   return `\n\n---\n✅ 执行完成 · ${speedOf(ms)}（${fmtDuration(ms)}）`
 }
 
-/** 截断(按字节) */
-export function truncate(text, max) {
+/** Truncate a string to at most `max` UTF-8 bytes. */
+export function truncate(text: string, max: number): string {
   if (Buffer.byteLength(text, 'utf8') <= max) return text
   let t = text
   while (Buffer.byteLength(t, 'utf8') > max) t = t.slice(0, -100)
-  return t + '\n\n...(内容过长已截断)'
+  return `${t}\n\n...(内容过长已截断)`
 }
 
 /**
- * 流式动画 v3: 阶段化台词 + 旋转表情 + 进度条 + 已用时/剩余估算 + 长任务彩蛋。
- * 每 intervalMs 更新一次同一条流式消息(共用 streamId), 直到 agent 完成。返回停止函数。
- * @param {() => string} [activity] - 可选: 返回当前真实活动描述, 覆盖阶段台词。
- * @param {typeof DEFAULT_THINKING} [thinking] - 动画素材; 缺省用 {@link DEFAULT_THINKING}。
- * @param {() => 'idle' | 'reasoning' | 'outputting' | string} [getStreamPhase] - 模型流式阶段, 影响旋转表情池。
+ * Refresh one stream message until the caller stops it.
+ * @param activity - live tool/status text; empty falls back to timed phases.
+ * @param thinking - animation copy; defaults to {@link DEFAULT_THINKING}.
+ * @param getStreamPhase - model stream phase; selects the spinner pool.
+ * @returns disposer that cancels the interval.
  */
-export function startThinking(ws, frame, streamId, startedAt, timeoutSec, activity, thinking, getStreamPhase) {
-  const t = { ...DEFAULT_THINKING, ...(thinking || {}) }
+export function startThinking(
+  ws: WecomStreamClient,
+  frame: unknown,
+  streamId: string,
+  startedAt: number,
+  timeoutSec: number,
+  activity?: () => string,
+  thinking?: Partial<ThinkingConfig>,
+  getStreamPhase?: () => 'idle' | 'reasoning' | 'outputting' | string,
+): () => void {
+  const t = { ...DEFAULT_THINKING, ...thinking }
   const phases = Array.isArray(t.phases) && t.phases.length > 0 ? t.phases : DEFAULT_THINKING.phases
   const spin = Array.isArray(t.spin) && t.spin.length > 0 ? t.spin : DEFAULT_THINKING.spin
   const reasoningSpin = Array.isArray(t.reasoningSpin) && t.reasoningSpin.length > 0
@@ -153,10 +187,10 @@ export function startThinking(ws, frame, streamId, startedAt, timeoutSec, activi
   const timer = setInterval(() => {
     const secs = Math.floor((Date.now() - startedAt) / 1000)
     const live = activity ? activity() : ''
-    let stage = phases[0].text
+    let stage = phases[0]?.text ?? ''
     if (!live) {
-      for (const p of phases) {
-        if (secs >= p.atSec) stage = p.text
+      for (const phase of phases) {
+        if (secs >= phase.atSec) stage = phase.text
       }
     }
     const pct = Math.min(Math.floor((secs / total) * 100), 99)
@@ -176,17 +210,25 @@ export function startThinking(ws, frame, streamId, startedAt, timeoutSec, activi
     const emoji = emojiPool[i % emojiPool.length]
     i++
     const status = live || stage
-    ws.replyStream(frame, streamId, `${emoji} ${status}   ⏱ ${secs} 秒${remainTxt}${bar}${egg}`, false).catch(() => {})
+    void ws.replyStream(frame, streamId, `${emoji} ${status}   ⏱ ${secs} 秒${remainTxt}${bar}${egg}`, false)
+      .catch(() => {})
   }, intervalMs)
   return () => clearInterval(timer)
 }
 
-/** 最终回复: 原流失败(如 WeCom 10 分钟过期)时用新流重试一次 */
-export async function sendFinal(ws, frame, streamId, content) {
+/** Finish the current stream; open a new stream if WeCom expired the first. */
+export async function sendFinal(
+  ws: WecomStreamClient,
+  frame: unknown,
+  streamId: string,
+  content: string,
+): Promise<void> {
   try {
     await ws.replyStream(frame, streamId, content, true)
-  } catch (e) {
-    console.error(`[im-bridge] 原流最终回复失败(${e.message}), 尝试新流...`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[im-bridge] 原流最终回复失败(${message}), 尝试新流...`)
+    const { generateReqId } = await import('@wecom/aibot-node-sdk')
     await ws.replyStream(frame, generateReqId('stream'), content, true)
   }
 }
