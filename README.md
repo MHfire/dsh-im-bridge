@@ -31,7 +31,7 @@
 - ✅ **进程内 Agent**：不 spawn 子进程，会话与 GUI 同进程注册，**实时可见、可续聊**
 - ✅ **per-sender 持久会话**：同一企业微信用户复用同一会话，有上下文记忆
 - ✅ **人设可定制**：包内中/英默认人设跟 Settings 语言；可用 profile 同目录 `persona.md` 覆盖
-- ✅ **配置热生效**：`allowFrom` / `agentTimeoutSec` / `startHint` 可在 Settings 插件配置页或 `settings.yaml` 修改，无需重启
+- ✅ **Settings 配置卡**：凭证、白名单、超时、提示语、模型覆盖可在 GUI 填写；热字段下一轮消息生效，改凭证须重启才连 WebSocket
 - ✅ **流式动画 + 执行简报**：处理中显示阶段状态/进度条/剩余估算，完成附耗时简报
 - ✅ 自动认证 / 心跳保活 / 断线指数退避重连（SDK 内置）
 - ✅ 同一发送者消息串行处理，防并发错乱
@@ -50,7 +50,9 @@ flowchart LR
 
 ## 📑 目录
 
+- [兼容的 DeepSeek Harness 版本](#-兼容的-deepseek-harness-版本)
 - [快速开始](#-快速开始)
+- [Settings 插件配置卡](#-settings-插件配置卡)
 - [配置说明](#-配置说明)
 - [人设提示词](#-人设提示词personamd)
 - [旧版 bridge.js](#-旧版-bridgejslegacy)
@@ -58,12 +60,24 @@ flowchart LR
 - [安全说明](#-安全说明)
 - [许可证](#-许可证)
 
+## 📌 兼容的 DeepSeek Harness 版本
+
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。插件 0.2.0 按实际调用的 API 对齐已发布 tag（细则见 [`plugin/README.md`](./plugin/README.md)）：
+
+| DSH | 本仓库插件 |
+|---|---|
+| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8)、[0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1)、[0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | 可适配（对照开发的是 0.1.1-rc.2 一线） |
+| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) 及更早 | 不可适配。rc.7 已有插件配置卡槽位和 `dsh plugin add`，但浏览器没有 `settingsScope.describe()`，配置卡加载和凭证「已配置」徽章会失败 |
+| 更新的 RC / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
+
+建议把 `dsh` 钉在 `0.1.0-rc.8` 及以上，例如 `npx @deepseek-ai/dsh@0.1.1-rc.2 web`，不要只跑浮动的 `latest`。旧版 `bridge.js` 只要求本机有 `dsh` CLI，不受上表约束。
+
 ## 🚀 快速开始
 
 ### 前提
 
 - Node.js 18+（旧版 `bridge.js` 需要；插件随 dsh 运行）
-- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.0-rc.8 及以上**（见上一节）
 
 ### 1. 企业微信侧：创建智能机器人（一次性）
 
@@ -85,8 +99,9 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 #     secret: "<你的 Secret>"
 #     # 可选：workspace / personaFile 等
 
-# 3) 重启 dsh 进程（如 dsh web / pnpm dsh web）
-# 4) 在企业微信给机器人发消息即可使用
+# 3) 重启 dsh 进程（建议钉版本，如 npx @deepseek-ai/dsh@0.1.1-rc.2 web）
+# 4) 也可在 Settings → 插件 → 插件配置 → 企业微信桥接 填写 botId/secret 后重启
+# 5) 在企业微信给机器人发消息即可使用
 ```
 
 ### 从源码 / 本地开发（备选）
@@ -98,6 +113,21 @@ dsh plugin --profile web add <本仓库路径>/plugin
 ### 3. 验证
 
 企业微信收到机器人回复；同时该会话出现在 DSH Web GUI 的会话列表中（可实时查看、续聊）。
+
+## 🧩 Settings 插件配置卡
+
+安装插件并启动 `dsh web` 后，打开 **设置 → 插件 → 插件配置**，展开 **企业微信桥接**。**保存** 写入 `settings.yaml` 用户层，与 profile `cordis.patch.yml` 同一层。
+
+| 卡片项 | 对应配置 | 保存后 |
+|---|---|---|
+| Bot ID / Secret | `botId` / `secret` | 徽章变为「已配置」；**须重启进程** 才会连 WebSocket。留空再保存不会清空已存凭证 |
+| 允许的发送者 userid | `allowFrom` | 下一轮消息生效 |
+| 单任务超时（秒） | `agentTimeoutSec` | 下一轮消息生效 |
+| 开始处理时的占位提示 | `startHint` | 下一轮消息生效 |
+| 非白名单拒绝文案 / 欢迎语 | `deniedMessage` / `welcomeMessage` | 下一轮消息生效 |
+| 企微专用 provider / model | `provider` / `model` | 只影响之后新建的发送者会话；须两项都填才覆盖 |
+
+`workspace`、人设、`thinking` 等不在卡片上，见下表或 [`plugin/README.md`](./plugin/README.md)。
 
 ## ⚙️ 配置说明
 
@@ -119,8 +149,7 @@ dsh plugin --profile web add <本仓库路径>/plugin
 > （默认 `workspace/headless.patch.yml`，本地配置文件，不在本仓库内）。示例配置已移除该字段，
 > 需要时自行添加，例如 `"patch": "headless.patch.yml"`。
 
-插件运行时，`allowFrom` / `agentTimeoutSec` / `startHint` 可在 **Settings → 插件配置** 页面编辑，
-写入 `settings.yaml` 热生效，也可直接修改 profile patch。
+插件字段也可在 **Settings 插件配置卡** 编辑（见上一节），或写在 profile patch。完整字段说明见 [`plugin/README.md`](./plugin/README.md)。
 
 ## 🤖 人设提示词（persona.md）
 

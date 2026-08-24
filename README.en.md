@@ -31,7 +31,7 @@ This repository ships two run modes:
 - **In-process Agent**: no child process spawn; sessions register with the GUI for live view and continue-chat
 - **Per-sender durable sessions**: the same WeCom user reuses one session with memory
 - **Custom persona**: zh/en packaged defaults follow Settings language; override with `persona.md` next to the profile patch
-- **Hot config**: `allowFrom` / `agentTimeoutSec` / `startHint` editable in Settings → Plugins or `settings.yaml` without restart
+- **Settings card**: credentials, allow-list, timeouts, copy, and model overrides are editable in the GUI; live fields apply on the next message, credential changes need a restart to open the WebSocket
 - **Streaming animation + completion footer**: stage/progress/ETA while running; duration summary when done
 - Auth / heartbeat / exponential reconnect (built into the SDK)
 - Serial handling per sender to avoid concurrent mix-ups
@@ -50,7 +50,9 @@ flowchart LR
 
 ## Contents
 
+- [Compatible DeepSeek Harness versions](#compatible-deepseek-harness-versions)
 - [Quick start](#quick-start)
+- [Settings plugin card](#settings-plugin-card)
 - [Configuration](#configuration)
 - [Persona (`persona.md`)](#persona-personamd)
 - [Legacy `bridge.js`](#legacy-bridgejs)
@@ -58,12 +60,24 @@ flowchart LR
 - [Security](#security)
 - [License](#license)
 
+## Compatible DeepSeek Harness versions
+
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.2.0 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
+
+| DSH | This repo’s plugin |
+|---|---|
+| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8), [0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1), [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | Compatible (developed against the 0.1.1-rc.2 line) |
+| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) and earlier | Not compatible. rc.7 already has the plugin settings-card slot and `dsh plugin add`, but the browser has no `settingsScope.describe()`, so the card and the credential “Configured” badges fail |
+| Newer RCs / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
+
+Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2 web`. Do not rely on a floating `latest`. Legacy `bridge.js` only needs a local `dsh` CLI and is not bound by the table above.
+
 ## Quick start
 
 ### Prerequisites
 
 - Node.js 18+ (required for legacy `bridge.js`; the plugin runs with dsh)
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) installed
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.0-rc.8 or later** (see the previous section)
 
 ### 1. WeCom: create an AI Bot (once)
 
@@ -86,8 +100,9 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 #     secret: "<your Secret>"
 #     # optional: workspace / personaFile / …
 
-# 3) Restart dsh (e.g. dsh web / pnpm dsh web)
-# 4) Message the bot in WeCom
+# 3) Restart dsh (pin the version, e.g. npx @deepseek-ai/dsh@0.1.1-rc.2 web)
+# 4) Or fill botId/secret in Settings → Plugins → Plugin configuration → WeCom Bridge, then restart
+# 5) Message the bot in WeCom
 ```
 
 ### From source / local development (optional)
@@ -99,6 +114,21 @@ dsh plugin --profile web add <repo-path>/plugin
 ### 3. Verify
 
 The bot replies in WeCom, and the session appears in the DSH Web GUI session list (live view and continue-chat).
+
+## Settings plugin card
+
+After the plugin is installed and `dsh web` is running, open **Settings → Plugins → Plugin configuration** and expand **WeCom Bridge**. **Save** writes the user layer of `settings.yaml`, the same layer as the profile `cordis.patch.yml`.
+
+| Card control | Config key | After save |
+|---|---|---|
+| Bot ID / Secret | `botId` / `secret` | Badge becomes “Configured”; a **process restart** is required to open the WebSocket. A blank save does not clear a stored credential |
+| Allowed sender userids | `allowFrom` | Applies on the next message |
+| Task timeout (seconds) | `agentTimeoutSec` | Applies on the next message |
+| Placeholder while thinking | `startHint` | Applies on the next message |
+| Denied-sender reply / welcome | `deniedMessage` / `welcomeMessage` | Applies on the next message |
+| WeCom-only provider / model | `provider` / `model` | Applies only to later new sender sessions; both must be set to override |
+
+`workspace`, persona, `thinking`, and similar fields are not on the card; see the table below or [`plugin/README.en.md`](./plugin/README.en.md).
 
 ## Configuration
 
@@ -119,7 +149,7 @@ Copy `config.example.json` to `config.json` and fill in values (**`config.json` 
 > **`patch`** (legacy `bridge.js` only, optional): path to a workspace `--patch` overlay
 > (default `workspace/headless.patch.yml`, local config not in this repo). Add it yourself if needed, e.g. `"patch": "headless.patch.yml"`.
 
-For the plugin, `allowFrom` / `agentTimeoutSec` / `startHint` can be edited under **Settings → Plugins**, written to `settings.yaml` with hot reload, or set in the profile patch.
+Plugin fields can also be edited on the **Settings plugin card** (previous section) or in the profile patch. Full field list: [`plugin/README.en.md`](./plugin/README.en.md).
 
 ## Persona (`persona.md`)
 
