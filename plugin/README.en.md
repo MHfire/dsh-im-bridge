@@ -4,9 +4,9 @@
 
 WeCom AI Bot ⇄ DeepSeek Harness Agent bridge — a **DSH plugin**.
 
-Creates Agents **in-process** inside a dsh profile (no child-process spawn): per-sender durable sessions (the same WeCom user reuses one session with memory), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`allowFrom` / `agentTimeoutSec` / `startHint`, and more, written to `settings.yaml` with hot reload).
+Creates Agents **in-process** inside a dsh profile (no child-process spawn): per-sender durable sessions (the same WeCom user reuses one session with memory), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`botId` / `secret`, allow-list, timeouts, copy, and model overrides, written to `settings.yaml`).
 
-The Host half registers the `im-bridge` namespace through `installSettingsSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. Live fields such as `startHint` apply on the next message; changing `botId` / `secret` still requires a process restart to open the WebSocket.
+The Host half registers the `im-bridge` namespace through `installSettingsSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. The card can set `botId` / `secret` on the same user layer as the profile patch. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
 
 ## Install
 
@@ -38,7 +38,7 @@ Install from this repo’s `plugin/` directory or a `file:` path:
 dsh plugin --profile web add <package-path>
 ```
 
-If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can fill credentials in Settings → Plugins; **restart** is required to connect (this release does not hot-start the WebSocket).
+If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them at the top of the Settings → Plugins card (same user layer as the profile patch); the badge becomes “Configured” after save. Changing credentials still requires a **restart** to connect (this release does not hot-reconnect).
 
 ## Configuration
 

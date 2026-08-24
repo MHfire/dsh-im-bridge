@@ -8,9 +8,16 @@ export type ImBridgeLocaleKey =
   | 'save'
   | 'saving'
   | 'discard'
+  | 'expand'
+  | 'collapse'
   | 'overridden'
   | 'reset'
   | 'invalidNumber'
+  | 'botId'
+  | 'secret'
+  | 'secretHint'
+  | 'secretConfigured'
+  | 'secretUnset'
   | 'allowFrom'
   | 'allowFromHint'
   | 'agentTimeoutSec'
@@ -29,16 +36,23 @@ export type ImBridgeLocaleKey =
 /** English copy for the im-bridge card. */
 export const en: Record<ImBridgeLocaleKey, string> = {
   title: 'WeCom Bridge',
-  description: 'Allow-list, timeouts, and WeCom-only model overrides.',
+  description: 'Credentials, allow-list, timeouts, and WeCom-only model overrides.',
   unsaved: 'Unsaved',
   readOnly: 'This document is read-only.',
   saveFailed: 'Save did not land. Correct the fields and try again.',
   save: 'Save',
   saving: 'Saving…',
   discard: 'Discard',
+  expand: 'Show settings',
+  collapse: 'Hide settings',
   overridden: 'Overridden',
   reset: 'Reset',
   invalidNumber: 'Enter a finite number.',
+  botId: 'Bot ID',
+  secret: 'Secret',
+  secretHint: 'Leave blank to keep the stored value. Save, then restart the process to open the WebSocket.',
+  secretConfigured: 'Configured',
+  secretUnset: 'Not configured',
   allowFrom: 'Allowed sender userids',
   allowFromHint: 'Comma-separated. Empty allows everyone.',
   agentTimeoutSec: 'Task timeout (seconds)',
@@ -58,16 +72,23 @@ export const en: Record<ImBridgeLocaleKey, string> = {
 /** Chinese copy for the im-bridge card. */
 export const zh: Record<ImBridgeLocaleKey, string> = {
   title: '企业微信桥接',
-  description: '白名单、超时和企微专用模型覆盖。',
+  description: '凭证、白名单、超时和企微专用模型覆盖。',
   unsaved: '未保存',
   readOnly: '当前文档不可写。',
   saveFailed: '保存未生效，请修正后重试。',
   save: '保存',
   saving: '保存中…',
   discard: '放弃',
+  expand: '展开设置',
+  collapse: '收起设置',
   overridden: '已覆盖',
   reset: '重置',
   invalidNumber: '请输入有效数字。',
+  botId: 'Bot ID',
+  secret: 'Secret',
+  secretHint: '留空保留已存值。保存后需重启进程才会连 WebSocket。',
+  secretConfigured: '已配置',
+  secretUnset: '未配置',
   allowFrom: '允许的发送者 userid',
   allowFromHint: '逗号分隔；空 = 允许所有人。',
   agentTimeoutSec: '单任务超时（秒）',

@@ -4,9 +4,9 @@
 
 企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接 **DSH 插件**。
 
-在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：per-sender 持久会话（同一企业微信用户复用同一会话，有上下文记忆），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`allowFrom` / `agentTimeoutSec` / `startHint` 等，写入 `settings.yaml` 热生效）。
+在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：per-sender 持久会话（同一企业微信用户复用同一会话，有上下文记忆），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`botId` / `secret`、白名单、超时、提示语、模型覆盖，写入 `settings.yaml`）。
 
-Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。改 `startHint` 等热字段后下一轮消息即生效；改 `botId` / `secret` 仍需重启进程才会连 WebSocket。
+Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。卡片可填 `botId` / `secret`，与 profile patch 写入同一用户层；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
 
 ## 安装
 
@@ -38,7 +38,7 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 dsh plugin --profile web add <本包路径>
 ```
 
-未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；Settings → 插件配置页仍可填写，保存后**重启**进程才会连接（本版本不做热启连）。
+未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在 Settings → 插件配置卡片顶部填写，保存后徽章变为「已配置」，与 profile patch 同一用户层。改凭证仍要**重启**进程才会连接（本版本不做热重连）。
 
 ## 配置项
 

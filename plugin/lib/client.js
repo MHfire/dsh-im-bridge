@@ -5,103 +5,232 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react = require("react");
+		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
-		//#region src/client/WecomCard.tsx
-		/** WeCom settings card: own chrome, staged fields, save/discard. */
-		const cardStyle = {
-			listStyle: "none",
-			margin: 0,
-			padding: "12px 14px",
-			border: "1px solid var(--dsw-border, #d0d0d0)",
-			borderRadius: 8
+		//#region \0dsh-css:C:\Users\user\Desktop\dsh-im-bridge\plugin\src\client\PluginCard.module.css.mjs
+		const css$1 = ".yj1zEa_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}.yj1zEa_card:hover{border-color:var(--dsw-alias-label-dimmed)}.yj1zEa_cardOpen{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}.yj1zEa_header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}.yj1zEa_header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.yj1zEa_headText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.yj1zEa_name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}.yj1zEa_description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}.yj1zEa_chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}.yj1zEa_chevronOpen{transform:rotate(180deg)}.yj1zEa_body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}.yj1zEa_readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}.yj1zEa_pending{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.yj1zEa_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}.yj1zEa_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}.yj1zEa_discard,.yj1zEa_save{appearance:none;font:inherit;cursor:pointer;border:1px solid #0000;border-radius:8px;padding:5px 14px;font-size:13px;line-height:1.5}.yj1zEa_discard{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:0 0}.yj1zEa_discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}.yj1zEa_save{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}.yj1zEa_discard:disabled,.yj1zEa_save:disabled{opacity:.4;cursor:default}.yj1zEa_discard:focus-visible,.yj1zEa_save:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}";
+		const tagId$1 = "@mhfire/dsh-im-bridge/PluginCard.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@mhfire/dsh-im-bridge";
+			tag.dataset.pluginCss = tagId$1;
+			tag.textContent = css$1;
+			document.head.appendChild(tag);
+		}
+		var PluginCard_module_css_default = {
+			"body": "yj1zEa_body",
+			"card": "yj1zEa_card",
+			"cardOpen": "yj1zEa_cardOpen",
+			"chevron": "yj1zEa_chevron",
+			"chevronOpen": "yj1zEa_chevronOpen",
+			"description": "yj1zEa_description",
+			"discard": "yj1zEa_discard",
+			"failed": "yj1zEa_failed",
+			"footer": "yj1zEa_footer",
+			"headText": "yj1zEa_headText",
+			"header": "yj1zEa_header",
+			"name": "yj1zEa_name",
+			"pending": "yj1zEa_pending",
+			"readOnly": "yj1zEa_readOnly",
+			"save": "yj1zEa_save"
 		};
-		const headerStyle = {
-			display: "flex",
-			alignItems: "center",
-			gap: 8,
-			width: "100%",
-			background: "none",
-			border: "none",
-			padding: 0,
-			cursor: "pointer",
-			textAlign: "left"
-		};
-		const nameStyle = {
-			fontSize: 14,
-			fontWeight: 600
-		};
-		const descStyle = {
-			fontSize: 12,
-			color: "var(--dsw-muted, #888)",
-			marginTop: 2
-		};
-		const bodyStyle = {
-			display: "grid",
-			gap: 10,
-			marginTop: 12
-		};
-		const fieldStyle = {
-			display: "grid",
-			gap: 2,
-			fontSize: 13
-		};
-		const inputStyle = {
-			width: "100%",
-			boxSizing: "border-box",
-			padding: "4px 6px",
-			fontSize: 13
-		};
-		const footerStyle = {
-			display: "flex",
-			gap: 8,
-			alignItems: "center",
-			marginTop: 4
-		};
-		const hintStyle = {
-			fontSize: 12,
-			color: "var(--dsw-muted, #888)"
-		};
-		function FieldRow(props) {
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
-				htmlFor: props.id,
-				style: fieldStyle,
-				children: [
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", { children: [props.label, props.field.overridden ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-						" ",
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-							style: hintStyle,
-							children: props.overriddenLabel
+		//#endregion
+		//#region src/client/PluginCard.tsx
+		/** Expandable plugin card chrome matching the Host Plugins section. */
+		/**
+		* Render one plugin card.
+		* @param props - locale copy, form state, and controls.
+		* @returns the card, or nothing when the namespace is unavailable.
+		*/
+		function PluginCard(props) {
+			const [open, setOpen] = (0, react.useState)(false);
+			const { state } = props;
+			if (!state.available) return null;
+			const title = props.t(props.titleKey);
+			const blocked = !state.dirty || state.invalid || state.saving;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
+				className: open ? `${PluginCard_module_css_default.card} ${PluginCard_module_css_default.cardOpen}` : PluginCard_module_css_default.card,
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+					type: "button",
+					className: PluginCard_module_css_default.header,
+					"aria-expanded": open,
+					"aria-label": `${props.t(open ? "collapse" : "expand")}: ${title}`,
+					onClick: () => {
+						setOpen((current) => !current);
+					},
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							className: PluginCard_module_css_default.headText,
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: PluginCard_module_css_default.name,
+								children: title
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: PluginCard_module_css_default.description,
+								children: props.t(props.descriptionKey)
+							})]
 						}),
-						" ",
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							disabled: props.disabled,
-							onClick: props.onReset,
-							children: props.resetLabel
+						state.dirty ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: PluginCard_module_css_default.pending,
+							children: props.t("unsaved")
+						}) : null,
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { className: open ? `${PluginCard_module_css_default.chevron} ${PluginCard_module_css_default.chevronOpen}` : PluginCard_module_css_default.chevron })
+					]
+				}), open ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: PluginCard_module_css_default.body,
+					children: [
+						!state.writable ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+							className: PluginCard_module_css_default.readOnly,
+							role: "status",
+							children: props.t("readOnly")
+						}) : null,
+						props.children,
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							className: PluginCard_module_css_default.footer,
+							children: [
+								state.failed ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+									className: PluginCard_module_css_default.failed,
+									role: "status",
+									children: props.t("saveFailed")
+								}) : null,
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: PluginCard_module_css_default.discard,
+									disabled: !state.dirty || state.saving,
+									onClick: props.onDiscard,
+									children: props.t("discard")
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: PluginCard_module_css_default.save,
+									disabled: blocked,
+									onClick: props.onSave,
+									children: props.t(state.saving ? "saving" : "save")
+								})
+							]
 						})
-					] }) : null] }),
+					]
+				}) : null]
+			});
+		}
+		//#endregion
+		//#region \0dsh-css:C:\Users\user\Desktop\dsh-im-bridge\plugin\src\client\fields.module.css.mjs
+		const css = ".OMD7cq_field{flex-direction:column;gap:6px;padding:12px 0;display:flex}.OMD7cq_field+.OMD7cq_field{border-top:1px solid var(--dsw-alias-border-l2)}.OMD7cq_head{align-items:center;gap:8px;display:flex}.OMD7cq_label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:500;line-height:1.5}.OMD7cq_badges{align-items:center;gap:8px;display:inline-flex}.OMD7cq_badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.OMD7cq_badgeMuted{white-space:nowrap;color:var(--dsw-alias-label-tertiary);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px}.OMD7cq_reset{font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;padding:0;font-size:12px;line-height:1.5}.OMD7cq_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.OMD7cq_reset:disabled{cursor:default}.OMD7cq_input{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_input:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:none}.OMD7cq_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.OMD7cq_inputInvalid{border:1px solid var(--dsw-alias-label-error);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_inputInvalid:focus-visible{outline:none}.OMD7cq_invalid{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.OMD7cq_hint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.5}";
+		const tagId = "@mhfire/dsh-im-bridge/fields.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@mhfire/dsh-im-bridge";
+			tag.dataset.pluginCss = tagId;
+			tag.textContent = css;
+			document.head.appendChild(tag);
+		}
+		var fields_module_css_default = {
+			"badge": "OMD7cq_badge",
+			"badgeMuted": "OMD7cq_badgeMuted",
+			"badges": "OMD7cq_badges",
+			"field": "OMD7cq_field",
+			"head": "OMD7cq_head",
+			"hint": "OMD7cq_hint",
+			"input": "OMD7cq_input",
+			"inputInvalid": "OMD7cq_inputInvalid",
+			"invalid": "OMD7cq_invalid",
+			"label": "OMD7cq_label",
+			"reset": "OMD7cq_reset"
+		};
+		//#endregion
+		//#region src/client/fields.tsx
+		/**
+		* A staged value field.
+		* @param props - the field's copy, staged text, and edit actions.
+		* @returns the labelled control.
+		*/
+		function ValueField(props) {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: fields_module_css_default.field,
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: fields_module_css_default.head,
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("label", {
+							className: fields_module_css_default.label,
+							htmlFor: props.id,
+							children: props.label
+						}), props.overridden ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							className: fields_module_css_default.badges,
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: fields_module_css_default.badge,
+								children: props.overriddenLabel
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+								type: "button",
+								className: fields_module_css_default.reset,
+								disabled: props.disabled,
+								onClick: props.onReset,
+								children: props.resetLabel
+							})]
+						}) : null]
+					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
 						id: props.id,
-						type: props.numeric === true ? "number" : "text",
-						value: props.field.text,
+						className: props.invalid ? fields_module_css_default.inputInvalid : fields_module_css_default.input,
+						type: "text",
+						...props.numeric === true ? { inputMode: "numeric" } : {},
+						...props.invalid ? { "aria-invalid": true } : {},
+						value: props.text,
 						disabled: props.disabled,
-						"aria-invalid": props.field.invalid || void 0,
-						style: inputStyle,
 						onChange: (event) => {
 							props.onEdit(event.target.value);
 						}
 					}),
-					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						style: {
-							...hintStyle,
-							color: props.field.invalid ? "#c00" : hintStyle.color
-						},
-						children: props.field.invalid ? props.invalidLabel : props.hint
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: props.invalid ? fields_module_css_default.invalid : fields_module_css_default.hint,
+						children: props.invalid ? props.invalidLabel : props.hint
 					})
 				]
 			});
 		}
+		/**
+		* Write-only credential control. The literal never rides a response, so the
+		* control starts blank and reports only whether one is configured.
+		* @param props - the field's copy, staged text, and configured state.
+		* @returns the labelled control.
+		*/
+		function SecretField(props) {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: fields_module_css_default.field,
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: fields_module_css_default.head,
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("label", {
+							className: fields_module_css_default.label,
+							htmlFor: props.id,
+							children: props.label
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: fields_module_css_default.badges,
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: props.configured ? fields_module_css_default.badge : fields_module_css_default.badgeMuted,
+								children: props.stateLabel
+							})
+						})]
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+						id: props.id,
+						className: fields_module_css_default.input,
+						type: "password",
+						autoComplete: "off",
+						value: props.text,
+						disabled: props.disabled,
+						onChange: (event) => {
+							props.onEdit(event.target.value);
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: fields_module_css_default.hint,
+						children: props.hint
+					})
+				]
+			});
+		}
+		//#endregion
+		//#region src/client/WecomCard.tsx
 		/**
 		* Render the WeCom settings card.
 		* @param props - locale copy, snapshot hook, and form actions.
@@ -110,177 +239,138 @@ window.__ModuleLoader__.load({
 		function WecomCard(props) {
 			const { t } = props;
 			const state = props.useWecomCard((snapshot) => snapshot);
-			const [open, setOpen] = (0, react.useState)(false);
-			if (!state.available) return null;
 			const disabled = !state.writable;
-			const blocked = !state.dirty || state.invalid || state.saving;
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
-				style: cardStyle,
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-					type: "button",
-					style: headerStyle,
-					"aria-expanded": open,
-					onClick: () => {
-						setOpen((current) => !current);
-					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						style: nameStyle,
-						children: t("title")
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						style: descStyle,
-						children: t("description")
-					})] }), state.dirty ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						style: hintStyle,
-						children: t("unsaved")
-					}) : null]
-				}), open ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-					style: bodyStyle,
-					children: [
-						!state.writable ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
-							style: hintStyle,
-							role: "status",
-							children: t("readOnly")
-						}) : null,
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-allowFrom",
-							label: t("allowFrom"),
-							hint: t("allowFromHint"),
-							disabled,
-							field: state.allowFrom,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("allowFrom", text);
-							},
-							onReset: () => {
-								props.resetField("allowFrom");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-agentTimeoutSec",
-							label: t("agentTimeoutSec"),
-							hint: t("agentTimeoutSecHint"),
-							numeric: true,
-							disabled,
-							field: state.agentTimeoutSec,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("agentTimeoutSec", text);
-							},
-							onReset: () => {
-								props.resetField("agentTimeoutSec");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-startHint",
-							label: t("startHint"),
-							hint: t("startHintHint"),
-							disabled,
-							field: state.startHint,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("startHint", text);
-							},
-							onReset: () => {
-								props.resetField("startHint");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-deniedMessage",
-							label: t("deniedMessage"),
-							hint: t("deniedMessageHint"),
-							disabled,
-							field: state.deniedMessage,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("deniedMessage", text);
-							},
-							onReset: () => {
-								props.resetField("deniedMessage");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-welcomeMessage",
-							label: t("welcomeMessage"),
-							hint: t("welcomeMessageHint"),
-							disabled,
-							field: state.welcomeMessage,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("welcomeMessage", text);
-							},
-							onReset: () => {
-								props.resetField("welcomeMessage");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-provider",
-							label: t("provider"),
-							hint: t("providerHint"),
-							disabled,
-							field: state.provider,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("provider", text);
-							},
-							onReset: () => {
-								props.resetField("provider");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FieldRow, {
-							id: "im-bridge-model",
-							label: t("model"),
-							hint: t("modelHint"),
-							disabled,
-							field: state.model,
-							overriddenLabel: t("overridden"),
-							resetLabel: t("reset"),
-							invalidLabel: t("invalidNumber"),
-							onEdit: (text) => {
-								props.edit("model", text);
-							},
-							onReset: () => {
-								props.resetField("model");
-							}
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-							style: footerStyle,
-							children: [
-								state.failed ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									role: "status",
-									style: {
-										color: "#c00",
-										fontSize: 12
-									},
-									children: t("saveFailed")
-								}) : null,
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									disabled: !state.dirty || state.saving,
-									onClick: props.discard,
-									children: t("discard")
-								}),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									disabled: blocked,
-									onClick: props.save,
-									children: t(state.saving ? "saving" : "save")
-								})
-							]
-						})
-					]
-				}) : null]
+			const field = {
+				overriddenLabel: t("overridden"),
+				resetLabel: t("reset"),
+				invalidLabel: t("invalidNumber"),
+				disabled
+			};
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(PluginCard, {
+				t,
+				titleKey: "title",
+				descriptionKey: "description",
+				state,
+				onSave: props.save,
+				onDiscard: props.discard,
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SecretField, {
+						id: "im-bridge-botId",
+						label: t("botId"),
+						hint: t("secretHint"),
+						disabled,
+						text: state.botId.text,
+						configured: state.botIdConfigured,
+						stateLabel: state.botIdConfigured ? t("secretConfigured") : t("secretUnset"),
+						onEdit: (text) => {
+							props.edit("botId", text);
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SecretField, {
+						id: "im-bridge-secret",
+						label: t("secret"),
+						hint: t("secretHint"),
+						disabled,
+						text: state.secret.text,
+						configured: state.secretConfigured,
+						stateLabel: state.secretConfigured ? t("secretConfigured") : t("secretUnset"),
+						onEdit: (text) => {
+							props.edit("secret", text);
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-allowFrom",
+						label: t("allowFrom"),
+						hint: t("allowFromHint"),
+						...field,
+						...state.allowFrom,
+						onEdit: (text) => {
+							props.edit("allowFrom", text);
+						},
+						onReset: () => {
+							props.resetField("allowFrom");
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-agentTimeoutSec",
+						label: t("agentTimeoutSec"),
+						hint: t("agentTimeoutSecHint"),
+						numeric: true,
+						...field,
+						...state.agentTimeoutSec,
+						onEdit: (text) => {
+							props.edit("agentTimeoutSec", text);
+						},
+						onReset: () => {
+							props.resetField("agentTimeoutSec");
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-startHint",
+						label: t("startHint"),
+						hint: t("startHintHint"),
+						...field,
+						...state.startHint,
+						onEdit: (text) => {
+							props.edit("startHint", text);
+						},
+						onReset: () => {
+							props.resetField("startHint");
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-deniedMessage",
+						label: t("deniedMessage"),
+						hint: t("deniedMessageHint"),
+						...field,
+						...state.deniedMessage,
+						onEdit: (text) => {
+							props.edit("deniedMessage", text);
+						},
+						onReset: () => {
+							props.resetField("deniedMessage");
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-welcomeMessage",
+						label: t("welcomeMessage"),
+						hint: t("welcomeMessageHint"),
+						...field,
+						...state.welcomeMessage,
+						onEdit: (text) => {
+							props.edit("welcomeMessage", text);
+						},
+						onReset: () => {
+							props.resetField("welcomeMessage");
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-provider",
+						label: t("provider"),
+						hint: t("providerHint"),
+						...field,
+						...state.provider,
+						onEdit: (text) => {
+							props.edit("provider", text);
+						},
+						onReset: () => {
+							props.resetField("provider");
+						}
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
+						id: "im-bridge-model",
+						label: t("model"),
+						hint: t("modelHint"),
+						...field,
+						...state.model,
+						onEdit: (text) => {
+							props.edit("model", text);
+						},
+						onReset: () => {
+							props.resetField("model");
+						}
+					})
+				]
 			});
 		}
 		//#endregion
@@ -336,6 +426,7 @@ window.__ModuleLoader__.load({
 		var CardForm = class {
 			scope;
 			specs;
+			secretSpecs;
 			staged = /* @__PURE__ */ new Map();
 			listeners = /* @__PURE__ */ new Set();
 			saving = false;
@@ -343,10 +434,12 @@ window.__ModuleLoader__.load({
 			/**
 			* @param scope - bound settings scope for this card's namespace.
 			* @param specs - section fields this card edits.
+			* @param secrets - write-only controls; a blank draft is a no-op.
 			*/
-			constructor(scope, specs) {
+			constructor(scope, specs, secrets = []) {
 				this.scope = scope;
 				this.specs = new Map(specs.map((spec) => [spec.field, spec]));
+				this.secretSpecs = new Map(secrets.map((spec) => [spec.field, spec]));
 				scope.subscribe(() => {
 					this.publish();
 				});
@@ -375,6 +468,11 @@ window.__ModuleLoader__.load({
 			/** One control's staged text, override badge, and validity. */
 			field(field) {
 				const staged = this.staged.get(field);
+				if (this.secretSpecs.has(field)) return {
+					text: staged?.text ?? "",
+					overridden: false,
+					invalid: false
+				};
 				const spec = this.spec(field);
 				if (staged === void 0) return {
 					text: spec.format(this.sectionValue(field)),
@@ -432,6 +530,15 @@ window.__ModuleLoader__.load({
 			plan() {
 				const plan = [];
 				for (const [field, staged] of this.staged) {
+					const secret = this.secretSpecs.get(field);
+					if (secret !== void 0) {
+						const value = staged.text.trim();
+						if (value !== "") plan.push({
+							field,
+							run: () => secret.write(value)
+						});
+						continue;
+					}
 					const spec = this.spec(field);
 					if (staged.clear) {
 						if (this.stored(field)) plan.push({
@@ -497,12 +604,21 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region src/client/card-controller.ts
+		/** Settings namespace paired with this card. */
+		const NS$1 = "im-bridge";
 		/** Bridges the `im-bridge` scope onto the staged card form. */
 		var WecomCardController = class {
+			scope;
+			describe;
 			form;
 			store;
-			/** @param scope - bound settings scope for the `im-bridge` namespace. */
-			constructor(scope) {
+			/**
+			* @param scope - bound settings scope for the `im-bridge` namespace.
+			* @param describe - Host describe face; secret literals never ride it.
+			*/
+			constructor(scope, describe) {
+				this.scope = scope;
+				this.describe = describe;
 				this.form = new CardForm(scope, [
 					csvField("allowFrom"),
 					numberField("agentTimeoutSec"),
@@ -511,12 +627,22 @@ window.__ModuleLoader__.load({
 					textField("welcomeMessage"),
 					textField("provider"),
 					textField("model")
-				]);
+				], [{
+					field: "botId",
+					write: (text) => this.writeSecret("botId", text)
+				}, {
+					field: "secret",
+					write: (text) => this.writeSecret("secret", text)
+				}]);
 				this.store = this.form.bind(() => this.projection());
 			}
 			projection() {
 				return {
 					...this.form.shell(),
+					botId: this.form.field("botId"),
+					secret: this.form.field("secret"),
+					botIdConfigured: this.secretConfigured("botId"),
+					secretConfigured: this.secretConfigured("secret"),
 					allowFrom: this.form.field("allowFrom"),
 					agentTimeoutSec: this.form.field("agentTimeoutSec"),
 					startHint: this.form.field("startHint"),
@@ -525,6 +651,24 @@ window.__ModuleLoader__.load({
 					provider: this.form.field("provider"),
 					model: this.form.field("model")
 				};
+			}
+			/**
+			* Whether the Host reports a configured value for one secret slot.
+			* @param field - `botId` or `secret`.
+			* @returns true when describe lists that slot as set.
+			*/
+			secretConfigured(field) {
+				return (this.describe.getSnapshot().view?.namespaces.find((candidate) => candidate.ns === NS$1))?.secrets.some((slot) => slot.path[0] === field && slot.set) === true;
+			}
+			/**
+			* Write one credential into the user layer, then read configured state back.
+			* @param field - `botId` or `secret`.
+			* @param text - the staged literal.
+			* @returns whether describe reports the slot set afterwards.
+			*/
+			async writeSecret(field, text) {
+				await this.scope.set(field, text);
+				return this.secretConfigured(field);
 			}
 			/** Face the slot registration injects. */
 			inject() {
@@ -539,16 +683,23 @@ window.__ModuleLoader__.load({
 		/** English copy for the im-bridge card. */
 		const en = {
 			title: "WeCom Bridge",
-			description: "Allow-list, timeouts, and WeCom-only model overrides.",
+			description: "Credentials, allow-list, timeouts, and WeCom-only model overrides.",
 			unsaved: "Unsaved",
 			readOnly: "This document is read-only.",
 			saveFailed: "Save did not land. Correct the fields and try again.",
 			save: "Save",
 			saving: "Saving…",
 			discard: "Discard",
+			expand: "Show settings",
+			collapse: "Hide settings",
 			overridden: "Overridden",
 			reset: "Reset",
 			invalidNumber: "Enter a finite number.",
+			botId: "Bot ID",
+			secret: "Secret",
+			secretHint: "Leave blank to keep the stored value. Save, then restart the process to open the WebSocket.",
+			secretConfigured: "Configured",
+			secretUnset: "Not configured",
 			allowFrom: "Allowed sender userids",
 			allowFromHint: "Comma-separated. Empty allows everyone.",
 			agentTimeoutSec: "Task timeout (seconds)",
@@ -567,16 +718,23 @@ window.__ModuleLoader__.load({
 		/** Chinese copy for the im-bridge card. */
 		const zh = {
 			title: "企业微信桥接",
-			description: "白名单、超时和企微专用模型覆盖。",
+			description: "凭证、白名单、超时和企微专用模型覆盖。",
 			unsaved: "未保存",
 			readOnly: "当前文档不可写。",
 			saveFailed: "保存未生效，请修正后重试。",
 			save: "保存",
 			saving: "保存中…",
 			discard: "放弃",
+			expand: "展开设置",
+			collapse: "收起设置",
 			overridden: "已覆盖",
 			reset: "重置",
 			invalidNumber: "请输入有效数字。",
+			botId: "Bot ID",
+			secret: "Secret",
+			secretHint: "留空保留已存值。保存后需重启进程才会连 WebSocket。",
+			secretConfigured: "已配置",
+			secretUnset: "未配置",
 			allowFrom: "允许的发送者 userid",
 			allowFromHint: "逗号分隔；空 = 允许所有人。",
 			agentTimeoutSec: "单任务超时（秒）",
@@ -609,7 +767,7 @@ window.__ModuleLoader__.load({
 		* @param ctx - browser plugin context.
 		*/
 		function apply(ctx) {
-			const card = new WecomCardController(ctx.settingsScope.bind({ namespace: NS }));
+			const card = new WecomCardController(ctx.settingsScope.bind({ namespace: NS }), ctx.settingsScope.describe());
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en

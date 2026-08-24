@@ -3,7 +3,8 @@
  */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: keyed slot declaration. Cross-plugin value imports are forbidden.
+// Type-only: ctx.settingsScope.describe and the keyed slot declaration.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { WecomCard } from './WecomCard.tsx'
 import { WecomCardController } from './card-controller.ts'
@@ -20,7 +21,10 @@ export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope
  * @param ctx - browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
-  const card = new WecomCardController(ctx.settingsScope.bind({ namespace: NS }))
+  const card = new WecomCardController(
+    ctx.settingsScope.bind({ namespace: NS }),
+    ctx.settingsScope.describe(),
+  )
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'im-bridge: locale dicts')
 
