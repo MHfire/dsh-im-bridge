@@ -2,9 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   isLegacyPinnedWecomTitle,
+  planWecomBind,
   resolveWecomSession,
   senderUserid,
-  wecomAgentBind,
+  stripBotMention,
   wecomDisplayTitle,
   wecomSessionId,
   WecomSessionReject,
@@ -113,31 +114,46 @@ test('group without chatid falls back to single userid', () => {
 })
 
 test('wecomDisplayTitle uses channel plus prompt text', () => {
-  assert.equal(wecomDisplayTitle('single', '帮我查一下文件'), '企业微信·私聊 帮我查一下文件')
-  assert.equal(wecomDisplayTitle('group', '汇总本周进度'), '企业微信·群 汇总本周进度')
+  assert.equal(wecomDisplayTitle('single', '帮我查一下文件'), '企微·私聊 帮我查一下文件')
+  assert.equal(wecomDisplayTitle('group', '汇总本周进度'), '企微·群 汇总本周进度')
 })
 
 test('wecomDisplayTitle does not stack prefixes and retargets kind', () => {
   assert.equal(
-    wecomDisplayTitle('single', '企业微信·私聊 帮我查一下文件'),
-    '企业微信·私聊 帮我查一下文件',
+    wecomDisplayTitle('single', '企微·私聊 帮我查一下文件'),
+    '企微·私聊 帮我查一下文件',
   )
   assert.equal(
     wecomDisplayTitle('group', '企业微信·私聊 帮我查一下文件'),
-    '企业微信·群 帮我查一下文件',
+    '企微·群 帮我查一下文件',
   )
-  assert.equal(wecomDisplayTitle('single', '企微·群 wrChat'), '企业微信·私聊 wrChat')
+  assert.equal(wecomDisplayTitle('single', '企微·群 wrChat'), '企微·私聊 wrChat')
 })
 
 test('wecomDisplayTitle empty body keeps the channel label', () => {
-  assert.equal(wecomDisplayTitle('single', ''), '企业微信·私聊')
-  assert.equal(wecomDisplayTitle('group', '   '), '企业微信·群')
-  assert.equal(wecomDisplayTitle('single', '企业微信·私聊'), '企业微信·私聊')
+  assert.equal(wecomDisplayTitle('single', ''), '企微·私聊')
+  assert.equal(wecomDisplayTitle('group', '   '), '企微·群')
+  assert.equal(wecomDisplayTitle('single', '企微·私聊'), '企微·私聊')
+})
+
+test('stripBotMention drops leading mentions with WeCom separators', () => {
+  assert.equal(stripBotMention('@MediaAgent 测试一下'), '测试一下')
+  assert.equal(stripBotMention('@MediaAgent\u2005测试一下'), '测试一下')
+  assert.equal(stripBotMention('@MediaAgent\u00a0测试一下'), '测试一下')
+  assert.equal(stripBotMention('@MediaAgent @张三 测试一下'), '测试一下')
+})
+
+test('stripBotMention keeps plain text, inner mentions, and mention-only messages', () => {
+  assert.equal(stripBotMention('测试一下'), '测试一下')
+  assert.equal(stripBotMention('帮我问 @张三 进度'), '帮我问 @张三 进度')
+  assert.equal(stripBotMention('@MediaAgent'), '@MediaAgent')
+  assert.equal(stripBotMention('@MediaAgent @张三'), '@MediaAgent @张三')
 })
 
 test('isLegacyPinnedWecomTitle matches old id pins only', () => {
   assert.equal(isLegacyPinnedWecomTitle('企微·私聊 userA'), true)
   assert.equal(isLegacyPinnedWecomTitle('企微·群 wrChat'), true)
+  assert.equal(isLegacyPinnedWecomTitle('企微·私聊 帮我查一下文件'), false)
   assert.equal(isLegacyPinnedWecomTitle('企业微信·私聊 帮我查一下文件'), false)
   assert.equal(isLegacyPinnedWecomTitle('企微·私聊'), false)
 })
@@ -152,9 +168,68 @@ test('wecomSessionId is stable, prefixed, and distinct per key', () => {
   assert.notEqual(a, group)
 })
 
-test('wecomAgentBind prefers live, then persisted, then create', () => {
-  assert.equal(wecomAgentBind(true, false), 'adopt')
-  assert.equal(wecomAgentBind(true, true), 'adopt')
-  assert.equal(wecomAgentBind(false, true), 'resume')
-  assert.equal(wecomAgentBind(false, false), 'create')
+test('wecomSessionId suffixes later epochs and keeps the first id bare', () => {
+  const base = wecomSessionId('single:userA')
+  assert.equal(wecomSessionId('single:userA', 1), base)
+  assert.equal(wecomSessionId('single:userA', 2), `${base}-2`)
+  assert.equal(wecomSessionId('single:userA', 3), `${base}-3`)
+  assert.equal(wecomSessionId('single:userA', 2), wecomSessionId('single:userA', 2))
+})
+
+/** Build the {@link planWecomBind} state from plain id lists. */
+function bindState(live: string[], stored: string[], archived: string[]): {
+  live: (id: string) => boolean
+  stored: ReadonlySet<string>
+  archived: ReadonlySet<string>
+} {
+  return {
+    live: (id) => live.includes(id),
+    stored: new Set(stored),
+    archived: new Set(archived),
+  }
+}
+
+test('planWecomBind prefers live, then persisted, then create', () => {
+  const key = 'single:userA'
+  const base = wecomSessionId(key)
+  assert.deepEqual(
+    planWecomBind(key, bindState([base], [base], [])),
+    { sessionId: base, bind: 'adopt', epoch: 1 },
+  )
+  assert.deepEqual(
+    planWecomBind(key, bindState([], [base], [])),
+    { sessionId: base, bind: 'resume', epoch: 1 },
+  )
+  assert.deepEqual(
+    planWecomBind(key, bindState([], [], [])),
+    { sessionId: base, bind: 'create', epoch: 1 },
+  )
+})
+
+test('planWecomBind skips archived epochs', () => {
+  const key = 'group:wrChat'
+  const base = wecomSessionId(key)
+  const second = wecomSessionId(key, 2)
+  const third = wecomSessionId(key, 3)
+  assert.deepEqual(
+    planWecomBind(key, bindState([], [base], [base])),
+    { sessionId: second, bind: 'create', epoch: 2 },
+  )
+  assert.deepEqual(
+    planWecomBind(key, bindState([], [base, second], [base])),
+    { sessionId: second, bind: 'resume', epoch: 2 },
+  )
+  assert.deepEqual(
+    planWecomBind(key, bindState([], [base, second], [base, second])),
+    { sessionId: third, bind: 'create', epoch: 3 },
+  )
+})
+
+test('planWecomBind never adopts an archived live Agent', () => {
+  const key = 'single:userA'
+  const base = wecomSessionId(key)
+  assert.deepEqual(
+    planWecomBind(key, bindState([base], [base], [base])),
+    { sessionId: wecomSessionId(key, 2), bind: 'create', epoch: 2 },
+  )
 })

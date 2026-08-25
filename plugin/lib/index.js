@@ -218,10 +218,10 @@ function isGroupChat(chattype, chatid) {
 }
 /** GUI channel prefix by window kind (no userid / chatid). */
 const WECOM_TITLE_PREFIX = {
-	single: "企业微信·私聊",
-	group: "企业微信·群"
+	single: "企微·私聊",
+	group: "企微·群"
 };
-/** Leading `企业微信·` / legacy `企微·` channel labels. */
+/** Leading `企微·` / previously used `企业微信·` channel labels. */
 const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)\s*/u;
 /**
 * Sidebar title: channel kind plus first-prompt text, never an id.
@@ -233,9 +233,24 @@ function wecomDisplayTitle(kind, raw) {
 	const stripped = raw.replace(CHANNEL_PREFIX, "").trim();
 	return stripped === "" ? prefix : `${prefix} ${stripped}`;
 }
+/** One leading `@nickname` and its separator; JS `\s` covers WeCom's U+00A0 and U+2005. */
+const LEADING_MENTION = /^@[^\s@]+(?:\s+|$)/u;
+/**
+* Drop the `@bot` mentions WeCom prepends to a group message, so the model
+* input and the generated title both start at the actual request. Mentions
+* later in the text stay; a message that is nothing but mentions is returned
+* unchanged rather than emptied.
+* @param text - trimmed inbound message text.
+*/
+function stripBotMention(text) {
+	let rest = text;
+	for (let match = LEADING_MENTION.exec(rest); match !== null; match = LEADING_MENTION.exec(rest)) rest = rest.slice(match[0].length);
+	const stripped = rest.trim();
+	return stripped === "" ? text : stripped;
+}
 /** Previously pinned `企微·私聊/群 <id>` titles from the id-based rename. */
 function isLegacyPinnedWecomTitle(title) {
-	return /^(?:企微·(?:私聊|群))\s+\S/.test(title.trim());
+	return /^(?:企微·(?:私聊|群))\s+[A-Za-z0-9][A-Za-z0-9_-]*$/.test(title.trim());
 }
 function singleRef(sender) {
 	return {
@@ -245,22 +260,46 @@ function singleRef(sender) {
 	};
 }
 /**
-* Stable DSH session id for a WeCom window (survives process restart).
+* Stable DSH session id for one epoch of a WeCom window (survives process
+* restart). Epoch 1 carries no suffix, so ids minted before archiving support
+* keep resolving to the same session.
 * @param key - {@link WecomSessionRef.key}.
+* @param epoch - 1-based session generation for this window.
 */
-function wecomSessionId(key) {
-	return `wecom-${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
+function wecomSessionId(key, epoch = 1) {
+	const hex = createHash("sha256").update(key).digest("hex").slice(0, 16);
+	return epoch <= 1 ? `wecom-${hex}` : `wecom-${hex}-${epoch}`;
 }
 /**
-* Choose adopt / resume / create. Live Agent wins; a persisted header
-* without a live Agent resumes; otherwise create.
-* @param live - `agents.get(sessionId)` returned an Agent.
-* @param persisted - persistence `list()` included this session id.
+* Bind a WeCom window to its first non-archived epoch. Archiving a session in
+* the GUI hides it everywhere with no way back, so its epoch is skipped and
+* the window continues in the next one; the chosen id adopts a live Agent,
+* resumes a persisted session, or starts a new one.
+* @param key - {@link WecomSessionRef.key}.
+* @param state - live / persisted / archived knowledge per candidate id.
 */
-function wecomAgentBind(live, persisted) {
-	if (live) return "adopt";
-	if (persisted) return "resume";
-	return "create";
+function planWecomBind(key, state) {
+	const limit = state.archived.size + 1;
+	for (let epoch = 1; epoch <= limit; epoch += 1) {
+		const sessionId = wecomSessionId(key, epoch);
+		if (state.archived.has(sessionId)) continue;
+		if (state.live(sessionId)) return {
+			sessionId,
+			bind: "adopt",
+			epoch
+		};
+		if (state.stored.has(sessionId)) return {
+			sessionId,
+			bind: "resume",
+			epoch
+		};
+		return {
+			sessionId,
+			bind: "create",
+			epoch
+		};
+	}
+	throw new Error(`im-bridge: no free session epoch for ${key} within ${String(limit)} candidates`);
 }
 /**
 * Map one inbound frame to a chat-window session.
@@ -578,6 +617,18 @@ function summarize(events, firstSeq) {
 		reason
 	};
 }
+/**
+* Payload of the log's last `session/title` event — the title in force now.
+* @param session - live session whose log to fold.
+* @returns the payload, or undefined when the session has no title event.
+*/
+function latestTitleData(session) {
+	const events = session.events;
+	for (let i = events.length - 1; i >= 0; i -= 1) {
+		const event = events[i];
+		if (event.type === "session/title") return event.data;
+	}
+}
 /** Read Host `locale.preference`; missing or unknown falls back to `zh`. */
 function readLocalePreference(settings) {
 	if (settings === void 0) return "zh";
@@ -668,22 +719,51 @@ function apply(ctx, config) {
 			return;
 		}
 		const chats = /* @__PURE__ */ new Map();
-		function prefixWecomTitle(session, st, event) {
-			if (st.kind === void 0) return;
-			const data = event.data;
-			const raw = typeof data.title === "string" ? data.title : "";
-			const next = wecomDisplayTitle(st.kind, raw);
-			if (next === raw) return;
-			const messageSeqs = Array.isArray(data.messageSeqs) ? data.messageSeqs.filter((seq) => typeof seq === "number") : [];
+		/**
+		* Add the channel prefix to a title the Host generated. `session/event`
+		* runs inside the append publication window, which refuses a reentrant
+		* append, so the prefixed title goes out in a microtask and re-reads the
+		* log first: an already prefixed tail (including the one this appends)
+		* stops the chain.
+		*/
+		function prefixWecomTitle(session, st) {
+			const kind = st.kind;
+			if (kind === void 0) return;
+			queueMicrotask(() => {
+				const data = latestTitleData(session);
+				if (data === void 0) return;
+				if (data.source?.kind === "user") return;
+				const raw = typeof data.title === "string" ? data.title : "";
+				const next = wecomDisplayTitle(kind, raw);
+				if (next === raw) return;
+				const messageSeqs = Array.isArray(data.messageSeqs) ? data.messageSeqs.filter((seq) => typeof seq === "number") : [];
+				if (messageSeqs.length === 0) return;
+				try {
+					session.append("session/title", {
+						title: next,
+						messageSeqs,
+						source: data.source ?? { kind: "fallback" }
+					});
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					console.error(`[im-bridge] 加标题前缀失败: ${message}`);
+				}
+			});
+		}
+		/**
+		* Sessions the GUI archived. Archiving is the workspace registry's global
+		* set, not session state, and it has no inverse: an archived session is
+		* invisible in every list, so this plugin must stop writing to it.
+		*/
+		function archivedSessions() {
+			const registry = ctx.get("workspaceRegistry");
+			if (registry === void 0) return /* @__PURE__ */ new Set();
 			try {
-				session.append("session/title", {
-					title: next,
-					messageSeqs,
-					source: data.source ?? { kind: "fallback" }
-				});
+				return new Set(registry.archivedSessionIds);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(`[im-bridge] 加标题前缀失败: ${message}`);
+				console.warn(`[im-bridge] 读归档会话失败: ${message}`);
+				return /* @__PURE__ */ new Set();
 			}
 		}
 		async function unpinLegacyWecomTitle(agent) {
@@ -706,12 +786,21 @@ function apply(ctx, config) {
 				chats.set(ref.key, st);
 			}
 			st.kind = ref.kind;
-			if (st.agent !== void 0) return st;
-			const sessionId = SessionId(wecomSessionId(ref.key));
-			const live = agents.get(sessionId);
+			if (st.agent !== void 0) {
+				if (st.sessionId === void 0 || !archivedSessions().has(st.sessionId)) return st;
+				console.log(`[im-bridge] 会话 ${st.sessionId} 已归档，改开新会话`);
+				st.agent = void 0;
+				st.sessionId = void 0;
+			}
 			const persistence = ctx.get("sessionPersistence");
-			const stored = persistence === void 0 ? void 0 : (await persistence.list()).find((header) => header.id === sessionId);
-			const bind = wecomAgentBind(live !== void 0, stored !== void 0);
+			const headers = persistence === void 0 ? [] : await persistence.list();
+			const plan = planWecomBind(ref.key, {
+				live: (id) => agents.get(SessionId(id)) !== void 0,
+				stored: new Set(headers.map((header) => header.id)),
+				archived: archivedSessions()
+			});
+			const sessionId = SessionId(plan.sessionId);
+			const stored = headers.find((header) => header.id === sessionId);
 			const attach = (agent, how) => {
 				st.agent = agent;
 				st.sessionId = sessionId;
@@ -719,15 +808,17 @@ function apply(ctx, config) {
 				unpinLegacyWecomTitle(agent);
 				const cwd = agent.session.header?.cwd ?? stored?.cwd;
 				if (cwd !== void 0 && cwd !== cfg().workspace) console.warn(`[im-bridge] 会话 ${sessionId} 仍使用存档目录 ${cwd}，当前 workspace=${cfg().workspace}`);
-				console.log(`[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ""}`);
+				const epoch = plan.epoch > 1 ? ` 第${String(plan.epoch)}段` : "";
+				console.log(`[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId}${epoch} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ""}`);
 			};
-			if (bind === "adopt" && live !== void 0) {
+			const live = agents.get(sessionId);
+			if (plan.bind === "adopt" && live !== void 0) {
 				attach(live, "adopt");
 				return st;
 			}
 			const selection = resolveSelection(cfg(), defaultModel);
 			const presets = ctx.get("agentPresets");
-			const presetId = bind === "resume" && stored?.agentPreset ? stored.agentPreset : cfg().agentPreset;
+			const presetId = plan.bind === "resume" && stored?.agentPreset ? stored.agentPreset : cfg().agentPreset;
 			let resolvedId = presetId;
 			if (presets !== void 0) resolvedId = (await presets.resolve(presetId)).id;
 			const setup = async (agentCtx) => {
@@ -749,7 +840,7 @@ function apply(ctx, config) {
 				model: selection.model
 			};
 			try {
-				if (bind === "resume") {
+				if (plan.bind === "resume") {
 					const { agent } = await agents.resume({
 						resumeSessionId: sessionId,
 						agentOptions,
@@ -785,7 +876,7 @@ function apply(ctx, config) {
 			for (const st of chats.values()) {
 				if (st.sessionId !== session.id) continue;
 				if (event.type === "session/title") {
-					prefixWecomTitle(session, st, event);
+					prefixWecomTitle(session, st);
 					continue;
 				}
 				if (event.type === "assistant/chunk") {
@@ -889,8 +980,9 @@ function apply(ctx, config) {
 		ws.on("reconnecting", ((n) => console.log(`[im-bridge] 第 ${n} 次重连...`)));
 		ws.on("error", ((error) => console.error(`[im-bridge] 错误: ${error.message}`)));
 		ws.on("message.text", ((frame) => {
-			const content = (frame.body?.text?.content || "").trim();
-			if (!content) return;
+			const inbound = (frame.body?.text?.content || "").trim();
+			if (!inbound) return;
+			const content = stripBotMention(inbound);
 			let ref;
 			try {
 				ref = resolveWecomSession(frame);

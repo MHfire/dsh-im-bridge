@@ -62,11 +62,11 @@ function isGroupChat(chattype: string | number | undefined, chatid: string): boo
 
 /** GUI channel prefix by window kind (no userid / chatid). */
 export const WECOM_TITLE_PREFIX = {
-  single: '企业微信·私聊',
-  group: '企业微信·群',
+  single: '企微·私聊',
+  group: '企微·群',
 } as const
 
-/** Leading `企业微信·` / legacy `企微·` channel labels. */
+/** Leading `企微·` / previously used `企业微信·` channel labels. */
 const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)\s*/u
 
 /**
@@ -80,9 +80,28 @@ export function wecomDisplayTitle(kind: 'single' | 'group', raw: string): string
   return stripped === '' ? prefix : `${prefix} ${stripped}`
 }
 
+/** One leading `@nickname` and its separator; JS `\s` covers WeCom's U+00A0 and U+2005. */
+const LEADING_MENTION = /^@[^\s@]+(?:\s+|$)/u
+
+/**
+ * Drop the `@bot` mentions WeCom prepends to a group message, so the model
+ * input and the generated title both start at the actual request. Mentions
+ * later in the text stay; a message that is nothing but mentions is returned
+ * unchanged rather than emptied.
+ * @param text - trimmed inbound message text.
+ */
+export function stripBotMention(text: string): string {
+  let rest = text
+  for (let match = LEADING_MENTION.exec(rest); match !== null; match = LEADING_MENTION.exec(rest)) {
+    rest = rest.slice(match[0].length)
+  }
+  const stripped = rest.trim()
+  return stripped === '' ? text : stripped
+}
+
 /** Previously pinned `企微·私聊/群 <id>` titles from the id-based rename. */
 export function isLegacyPinnedWecomTitle(title: string): boolean {
-  return /^(?:企微·(?:私聊|群))\s+\S/.test(title.trim())
+  return /^(?:企微·(?:私聊|群))\s+[A-Za-z0-9][A-Za-z0-9_-]*$/.test(title.trim())
 }
 
 function singleRef(sender: string): WecomSessionRef {
@@ -94,27 +113,57 @@ function singleRef(sender: string): WecomSessionRef {
 }
 
 /**
- * Stable DSH session id for a WeCom window (survives process restart).
+ * Stable DSH session id for one epoch of a WeCom window (survives process
+ * restart). Epoch 1 carries no suffix, so ids minted before archiving support
+ * keep resolving to the same session.
  * @param key - {@link WecomSessionRef.key}.
+ * @param epoch - 1-based session generation for this window.
  */
-export function wecomSessionId(key: string): string {
+export function wecomSessionId(key: string, epoch = 1): string {
   const hex = createHash('sha256').update(key).digest('hex').slice(0, 16)
-  return `wecom-${hex}`
+  return epoch <= 1 ? `wecom-${hex}` : `wecom-${hex}-${epoch}`
 }
 
-/** How {@link wecomAgentBind} attaches a WeCom window to a DSH Agent. */
-export type WecomAgentBind = 'adopt' | 'resume' | 'create'
+/** Session a WeCom window binds to, and how {@link planWecomBind} reaches it. */
+export interface WecomBindPlan {
+  /** DSH session id from {@link wecomSessionId}. */
+  readonly sessionId: string
+  /** Adopt a live Agent, resume a persisted session, or create a new one. */
+  readonly bind: 'adopt' | 'resume' | 'create'
+  /** Which epoch {@link WecomBindPlan.sessionId} belongs to. */
+  readonly epoch: number
+}
+
+/** What the Host currently knows about candidate session ids. */
+export interface WecomBindState {
+  /** Whether the Agent registry holds a live Agent for this id. */
+  live: (sessionId: string) => boolean
+  /** Session ids present in session persistence. */
+  stored: ReadonlySet<string>
+  /** Session ids in the workspace registry's archive set. */
+  archived: ReadonlySet<string>
+}
 
 /**
- * Choose adopt / resume / create. Live Agent wins; a persisted header
- * without a live Agent resumes; otherwise create.
- * @param live - `agents.get(sessionId)` returned an Agent.
- * @param persisted - persistence `list()` included this session id.
+ * Bind a WeCom window to its first non-archived epoch. Archiving a session in
+ * the GUI hides it everywhere with no way back, so its epoch is skipped and
+ * the window continues in the next one; the chosen id adopts a live Agent,
+ * resumes a persisted session, or starts a new one.
+ * @param key - {@link WecomSessionRef.key}.
+ * @param state - live / persisted / archived knowledge per candidate id.
  */
-export function wecomAgentBind(live: boolean, persisted: boolean): WecomAgentBind {
-  if (live) return 'adopt'
-  if (persisted) return 'resume'
-  return 'create'
+export function planWecomBind(key: string, state: WecomBindState): WecomBindPlan {
+  // An archived id is necessarily a known session, so the archive set bounds
+  // how many epochs can be skipped.
+  const limit = state.archived.size + 1
+  for (let epoch = 1; epoch <= limit; epoch += 1) {
+    const sessionId = wecomSessionId(key, epoch)
+    if (state.archived.has(sessionId)) continue
+    if (state.live(sessionId)) return { sessionId, bind: 'adopt', epoch }
+    if (state.stored.has(sessionId)) return { sessionId, bind: 'resume', epoch }
+    return { sessionId, bind: 'create', epoch }
+  }
+  throw new Error(`im-bridge: no free session epoch for ${key} within ${String(limit)} candidates`)
 }
 
 /**

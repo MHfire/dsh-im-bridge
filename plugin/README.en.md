@@ -15,8 +15,10 @@ One DSH session maps to one WeCom chat window, not “every window of the same u
 - **1:1**: `single:<userid>` — one Agent for that user
 - **Group**: `group:<chatid>` — all members share one Agent and one serial queue (two people speaking at once still cannot concurrent-`followup`)
 - `allowFrom` still filters by **sender** userid; rejected senders are not enqueued
+- Leading `@nickname` mentions are stripped on arrival, so both the model input and the title read `测试一下` instead of `@MediaAgent 测试一下`. Mentions later in the text stay, and a message that is nothing but mentions goes to the model unchanged
 - Process restart continues the same durable session via a stable `wecom-` + short hash of the key: adopt a live Agent if the process already has one (for example the browser already opened that row), `resume` from persistence otherwise, and `create` only when neither exists. Resume cwd / preset follow the archive, not the current config; a cwd mismatch logs a warning and is not rewritten.
-- The GUI title is `企业微信·私聊` / `企业微信·群` plus the first user prompt (the same automatic title as other sessions), not a userid / chatid; two windows of the same kind with similar first lines stay two sidebar rows
+- The GUI title is `企微·私聊` / `企微·群` plus the first user prompt (the same automatic title as other sessions), not a userid / chatid; two windows of the same kind with similar first lines stay two sidebar rows
+- Archiving a WeCom session in the GUI ends that context: the next message silently starts a new session at `wecom-<hash>-2` (`-3` after another archive), with no extra WeCom notice. DSH has no unarchive API, so the archived session is merely no longer written to — it neither becomes visible again nor is deleted
 - Every window still shares the same `workspace` (files / rag). That is environment isolation, separate from chat-context windows
 
 ## Compatible DeepSeek Harness versions

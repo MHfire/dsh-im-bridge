@@ -24,10 +24,10 @@ import {
 } from './reply-images.ts'
 import {
   isLegacyPinnedWecomTitle,
+  planWecomBind,
   resolveWecomSession,
-  wecomAgentBind,
+  stripBotMention,
   wecomDisplayTitle,
-  wecomSessionId,
   WecomSessionReject,
   type WecomSessionRef,
 } from './session-key.ts'
@@ -213,6 +213,10 @@ interface SessionPersistence {
   list(): Promise<SessionPersistenceHeader[]>
 }
 
+interface WorkspaceRegistry {
+  readonly archivedSessionIds: readonly string[]
+}
+
 interface SessionStore {
   flush(session: LiveAgent['session']): Promise<void>
 }
@@ -229,6 +233,7 @@ interface SessionTitleService {
 
 interface TitledSession {
   id: string
+  events: readonly LoggedEvent[]
   append(type: 'session/title', data: {
     title: string
     messageSeqs: number[]
@@ -239,7 +244,7 @@ interface TitledSession {
 interface SessionTitleEventData {
   title?: string
   messageSeqs?: number[]
-  source?: unknown
+  source?: { kind?: string }
 }
 
 interface AgentPresets {
@@ -299,6 +304,20 @@ function summarize(events: readonly LoggedEvent[], firstSeq: number): { text: st
     if (event.type === 'turn/end') reason = event.data.reason
   }
   return { text, reason }
+}
+
+/**
+ * Payload of the log's last `session/title` event — the title in force now.
+ * @param session - live session whose log to fold.
+ * @returns the payload, or undefined when the session has no title event.
+ */
+function latestTitleData(session: TitledSession): SessionTitleEventData | undefined {
+  const events = session.events
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i]
+    if (event.type === 'session/title') return event.data as SessionTitleEventData
+  }
+  return undefined
 }
 
 /** Read Host `locale.preference`; missing or unknown falls back to `zh`. */
@@ -406,22 +425,58 @@ export function apply(ctx: Context, config: Config): void {
 
     const chats = new Map<string, ChatState>()
 
-    function prefixWecomTitle(session: TitledSession, st: ChatState, event: LoggedEvent): void {
-      if (st.kind === undefined) return
-      const data = event.data as SessionTitleEventData
-      const raw = typeof data.title === 'string' ? data.title : ''
-      const next = wecomDisplayTitle(st.kind, raw)
-      if (next === raw) return
-      const messageSeqs = Array.isArray(data.messageSeqs) ? data.messageSeqs.filter((seq) => typeof seq === 'number') : []
+    /**
+     * Add the channel prefix to a title the Host generated. `session/event`
+     * runs inside the append publication window, which refuses a reentrant
+     * append, so the prefixed title goes out in a microtask and re-reads the
+     * log first: an already prefixed tail (including the one this appends)
+     * stops the chain.
+     */
+    function prefixWecomTitle(session: TitledSession, st: ChatState): void {
+      const kind = st.kind
+      if (kind === undefined) return
+      queueMicrotask(() => {
+        const data = latestTitleData(session)
+        if (data === undefined) return
+        // An explicit GUI rename is pinned on purpose; only automatic titles get labelled.
+        if (data.source?.kind === 'user') return
+        const raw = typeof data.title === 'string' ? data.title : ''
+        const next = wecomDisplayTitle(kind, raw)
+        if (next === raw) return
+        const messageSeqs = Array.isArray(data.messageSeqs)
+          ? data.messageSeqs.filter((seq) => typeof seq === 'number')
+          : []
+        // A non-user title must cite at least one user/message seq, or the
+        // session-title invariant rejects the append.
+        if (messageSeqs.length === 0) return
+        try {
+          session.append('session/title', {
+            title: next,
+            messageSeqs,
+            source: data.source ?? { kind: 'fallback' },
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error(`[im-bridge] 加标题前缀失败: ${message}`)
+        }
+      })
+    }
+
+    /**
+     * Sessions the GUI archived. Archiving is the workspace registry's global
+     * set, not session state, and it has no inverse: an archived session is
+     * invisible in every list, so this plugin must stop writing to it.
+     */
+    function archivedSessions(): ReadonlySet<string> {
+      const registry = ctx.get('workspaceRegistry') as WorkspaceRegistry | undefined
+      if (registry === undefined) return new Set()
       try {
-        session.append('session/title', {
-          title: next,
-          messageSeqs,
-          source: data.source ?? { kind: 'fallback' },
-        })
+        return new Set(registry.archivedSessionIds)
       } catch (error) {
+        // The getter throws until the registry finishes its own startup.
         const message = error instanceof Error ? error.message : String(error)
-        console.error(`[im-bridge] 加标题前缀失败: ${message}`)
+        console.warn(`[im-bridge] 读归档会话失败: ${message}`)
+        return new Set()
       }
     }
 
@@ -446,15 +501,22 @@ export function apply(ctx: Context, config: Config): void {
         chats.set(ref.key, st)
       }
       st.kind = ref.kind
-      if (st.agent !== undefined) return st
+      if (st.agent !== undefined) {
+        if (st.sessionId === undefined || !archivedSessions().has(st.sessionId)) return st
+        console.log(`[im-bridge] 会话 ${st.sessionId} 已归档，改开新会话`)
+        st.agent = undefined
+        st.sessionId = undefined
+      }
 
-      const sessionId = SessionId(wecomSessionId(ref.key))
-      const live = agents.get(sessionId)
       const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
-      const stored = persistence === undefined
-        ? undefined
-        : (await persistence.list()).find((header) => header.id === sessionId)
-      const bind = wecomAgentBind(live !== undefined, stored !== undefined)
+      const headers = persistence === undefined ? [] : await persistence.list()
+      const plan = planWecomBind(ref.key, {
+        live: (id) => agents.get(SessionId(id)) !== undefined,
+        stored: new Set(headers.map((header) => header.id)),
+        archived: archivedSessions(),
+      })
+      const sessionId = SessionId(plan.sessionId)
+      const stored = headers.find((header) => header.id === sessionId)
 
       const attach = (agent: LiveAgent, how: 'adopt' | 'resume' | 'create'): void => {
         st.agent = agent
@@ -467,19 +529,21 @@ export function apply(ctx: Context, config: Config): void {
             `[im-bridge] 会话 ${sessionId} 仍使用存档目录 ${cwd}，当前 workspace=${cfg().workspace}`,
           )
         }
+        const epoch = plan.epoch > 1 ? ` 第${String(plan.epoch)}段` : ''
         console.log(
-          `[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ''}`,
+          `[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId}${epoch} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ''}`,
         )
       }
 
-      if (bind === 'adopt' && live !== undefined) {
+      const live = agents.get(sessionId)
+      if (plan.bind === 'adopt' && live !== undefined) {
         attach(live, 'adopt')
         return st
       }
 
       const selection = resolveSelection(cfg(), defaultModel)
       const presets = ctx.get('agentPresets') as AgentPresets | undefined
-      const presetId = (bind === 'resume' && stored?.agentPreset) ? stored.agentPreset : cfg().agentPreset
+      const presetId = (plan.bind === 'resume' && stored?.agentPreset) ? stored.agentPreset : cfg().agentPreset
       let resolvedId = presetId
       if (presets !== undefined) {
         resolvedId = (await presets.resolve(presetId)).id
@@ -499,7 +563,7 @@ export function apply(ctx: Context, config: Config): void {
       const agentOptions = { provider: selection.provider, model: selection.model }
 
       try {
-        if (bind === 'resume') {
+        if (plan.bind === 'resume') {
           const { agent } = await agents.resume({
             resumeSessionId: sessionId,
             agentOptions,
@@ -535,7 +599,7 @@ export function apply(ctx: Context, config: Config): void {
       for (const st of chats.values()) {
         if (st.sessionId !== session.id) continue
         if (event.type === 'session/title') {
-          prefixWecomTitle(session, st, event)
+          prefixWecomTitle(session, st)
           continue
         }
         if (event.type === 'assistant/chunk') {
@@ -670,8 +734,9 @@ export function apply(ctx: Context, config: Config): void {
     ws.on('error', ((error: Error) => console.error(`[im-bridge] 错误: ${error.message}`)) as (...args: never[]) => void)
 
     ws.on('message.text', ((frame: WecomFrame) => {
-      const content = (frame.body?.text?.content || '').trim()
-      if (!content) return
+      const inbound = (frame.body?.text?.content || '').trim()
+      if (!inbound) return
+      const content = stripBotMention(inbound)
       let ref: WecomSessionRef
       try {
         ref = resolveWecomSession(frame)
