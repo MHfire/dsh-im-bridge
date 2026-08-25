@@ -134,6 +134,23 @@ Precedence: `personaFile` → `persona` string → packaged default persona.
 
 Or copy [`persona.example.md`](./persona.example.md) as a fill-in template. Supports `{{model}}` / `{{cwd}}`. Do not commit secret-bearing persona files. Welcome / deny / thinking copy remain Chinese config strings and do not follow locale yet.
 
+## Sending PNGs to WeCom
+
+If the agent’s final reply contains Markdown pointing at a **workspace** PNG, the bridge uploads it after the text stream finishes and sends it as a **separate image message** (`uploadMedia`, then `sendMediaMessage` with `media_id`).
+
+Trigger (paths relative to `workspace`):
+
+```markdown
+![screenshot](main_screen.png)
+[screenshot](out/frame.png)
+```
+
+- Only `.png`; `http(s):` / `data:` are ignored; the file must stay inside `workspace`
+- Must be a real PNG (signature), at most **10MB** each, at most **10** images (first-seen order, deduped)
+- Writing a PNG without that Markdown does **not** send it
+- Images follow the text bubble; they are not inlined into the stream
+- Inbound image / voice / file messages are still ignored
+
 ## Security
 
 - Do not commit secret-bearing files such as `config.json` / `persona.md`

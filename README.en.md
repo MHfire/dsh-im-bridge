@@ -33,6 +33,7 @@ This repository ships two run modes:
 - **Custom persona**: zh/en packaged defaults follow Settings language; override with `persona.md` next to the profile patch
 - **Settings card**: credentials, allow-list, timeouts, copy, and model overrides are editable in the GUI; live fields apply on the next message, credential changes need a restart to open the WebSocket
 - **Streaming animation + completion footer**: stage/progress/ETA while running; duration summary when done
+- **Workspace PNGs in the reply**: `![caption](relative/path.png)` in the final reply is uploaded and sent as a separate image after the text
 - Auth / heartbeat / exponential reconnect (built into the SDK)
 - Serial handling per sender to avoid concurrent mix-ups
 
@@ -173,7 +174,7 @@ When you see `[bridge] 认证成功, 等待消息...`, it is ready. Each message
 
 ## Known limits
 
-- v1 handles text only (image/voice/file ignored; SDK supports them but not wired)
+- v1 **inbound** is text-only (image/voice/file ignored); **outbound** can upload workspace PNGs referenced in reply Markdown and send them as separate images (see [`plugin/README.en.md`](./plugin/README.en.md#sending-pngs-to-wecom))
 - Legacy `bridge.js` may hit `spawn EPERM` in restricted sandboxes; run normally
 - Legacy mode starts one agent process per message (expensive); the plugin does not
 - Agent output above ~20KB is truncated (WeCom `replyStream` limit is 20480 bytes)

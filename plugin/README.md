@@ -134,6 +134,23 @@ thinking:
 
 也可复制 [`persona.example.md`](./persona.example.md) 为模板后按环境填写。支持 `{{model}}` / `{{cwd}}` 占位符。含环境凭据的人设文件请勿提交。欢迎语 / 拒绝文案 / 思考动画文案目前仍为中文配置项，不随语言切换。
 
+## 把 PNG 发到企业微信
+
+Agent 的最终回复若包含指向**工作区内** PNG 的 Markdown，桥会在文字流结束之后，把图作为**独立图片消息**发出（先 `uploadMedia`，再用 `media_id` 调用 `sendMediaMessage`）。
+
+触发写法（相对 `workspace`）：
+
+```markdown
+![屏幕截图](main_screen.png)
+[屏幕截图](out/frame.png)
+```
+
+- 只认 `.png`；跳过 `http(s):` / `data:`；路径必须落在 `workspace` 内
+- 文件须为真实 PNG（文件头），单张不超过 **10MB**，最多 **10** 张（按出现顺序去重）
+- 只把 PNG 写到磁盘、回复里没有上述 Markdown，**不会**发图
+- 图在文字气泡之后另发，不会嵌进同一条流式消息
+- 入站图片/语音/文件消息仍忽略
+
 ## 安全
 
 - `config.json` / `persona.md` 等含密钥文件不入库；

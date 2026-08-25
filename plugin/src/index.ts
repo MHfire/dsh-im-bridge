@@ -19,6 +19,11 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
+  collectReplyPngs,
+  resolveChatId,
+  sendCollectedPngs,
+} from './reply-images.ts'
+import {
   DEFAULT_THINKING,
   footerOf,
   fmtDuration,
@@ -190,12 +195,19 @@ interface WecomFrame {
     sender?: { userid?: string }
     from?: { userid?: string }
     userid?: string
+    chatid?: string
+    chattype?: string | number
   }
 }
 
 interface WecomClient {
   replyStream(frame: unknown, streamId: string, content: string, finish: boolean): Promise<unknown>
   replyWelcome(frame: unknown, payload: { msgtype: string; text: { content: string } }): Promise<unknown>
+  uploadMedia(
+    fileBuffer: Buffer,
+    options: { type: string; filename: string },
+  ): Promise<{ media_id?: string; mediaId?: string }>
+  sendMediaMessage(chatid: string, mediaType: string, mediaId: string): Promise<unknown>
   connect(): void
   close?(): void
   on(event: string, handler: (...args: never[]) => void): void
@@ -470,9 +482,23 @@ export function apply(ctx: Context, config: Config): void {
         const outcome = summarize(st.agent.session.events, firstSeq)
         if (stopThinking) stopThinking()
         const ms = Date.now() - startedAt
-        const reply = truncate(outcome.text || '(agent 无输出)', (cfg().maxReplyBytes || 20000) - 200) + footerOf(ms)
+        const body = outcome.text || '(agent 无输出)'
+        const collected = collectReplyPngs(body, cfg().workspace)
+        for (const reason of collected.skipped) {
+          console.warn(`[im-bridge] 跳过图片: ${reason}`)
+        }
+        let reply = truncate(body, (cfg().maxReplyBytes || 20000) - 200) + footerOf(ms)
+        if (collected.skipped.length > 0) {
+          reply = truncate(
+            `${reply}\n⚠️ ${collected.skipped.length} 张图片未发送（过大、越权或不存在）`,
+            cfg().maxReplyBytes || 20000,
+          )
+        }
         console.log(`[im-bridge] ${sender} 完成 (${Buffer.byteLength(reply, 'utf8')}B, ${fmtDuration(ms)})`)
         await sendFinal(ws, frame, streamId, reply)
+        if (collected.images.length > 0) {
+          await sendCollectedPngs(ws, resolveChatId(frame, sender), collected.images)
+        }
       } catch (error) {
         if (stopThinking) stopThinking()
         const ms = Date.now() - startedAt

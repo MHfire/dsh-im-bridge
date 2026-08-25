@@ -30,7 +30,8 @@
   ],
   "scripts": {
     "build": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts",
-    "prepare": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts"
+    "prepare": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts",
+    "test": "node --experimental-strip-types --test tests/reply-images.test.ts"
   },
   "dsh": {
     "bundle": {

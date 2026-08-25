@@ -1,12 +1,187 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import z from "@deepseek-ai/schemastery";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionId } from "@deepseek-ai/dsh-session";
 import { installModelSelection } from "@deepseek-ai/dsh-agent";
 import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+/** PNG signature (first 8 bytes). */
+const PNG_MAGIC = Buffer.from([
+	137,
+	80,
+	78,
+	71,
+	13,
+	10,
+	26,
+	10
+]);
+/** `![alt](url)` or `[text](url)`, capturing the destination. */
+const MARKDOWN_LINK = /!?\[(?:[^\]]*?)\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+/**
+* Pull destination URLs from Markdown images and links, in order.
+* @param text - assistant reply body.
+* @returns raw destinations (angle brackets already stripped).
+*/
+function extractMarkdownUrls(text) {
+	const urls = [];
+	for (const match of text.matchAll(MARKDOWN_LINK)) {
+		const raw = match[1];
+		if (raw === void 0) continue;
+		const dest = raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw;
+		if (dest !== "") urls.push(dest);
+	}
+	return urls;
+}
+/**
+* Chat id for `sendMediaMessage`: group `chatid`, otherwise the sender userid.
+* @param frame - inbound WeCom frame.
+* @param sender - userid used for 1:1 chats.
+*/
+function resolveChatId(frame, sender) {
+	const chattype = frame.body?.chattype;
+	const chatid = frame.body?.chatid;
+	if ((chattype === "group" || chattype === 2 || chattype === "2") && chatid) return chatid;
+	if (!(chattype === "single" || chattype === 1 || chattype === "1") && chatid) return chatid;
+	return sender;
+}
+function stripQueryHash(url) {
+	const noHash = url.split("#")[0] ?? url;
+	return noHash.split("?")[0] ?? noHash;
+}
+function isRemote(url) {
+	return /^(?:https?:|data:|mailto:|file:)/i.test(url);
+}
+function isPngPath(url) {
+	return /\.png$/i.test(url);
+}
+function containedIn(root, target) {
+	const rel = relative(root, target);
+	if (rel === "") return false;
+	if (isAbsolute(rel)) return false;
+	if (rel === ".." || rel.startsWith(`..${sep}`)) return false;
+	return true;
+}
+function tryRealpath(path) {
+	try {
+		return realpathSync(path);
+	} catch {
+		return;
+	}
+}
+/**
+* Resolve Markdown destinations to workspace PNG files.
+* @param text - untruncated assistant reply.
+* @param workspace - Agent cwd / plugin `workspace`.
+* @param options - optional size/count caps.
+*/
+function collectReplyPngs(text, workspace, options) {
+	const maxBytes = options?.maxBytes ?? 10485760;
+	const maxCount = options?.maxCount ?? 10;
+	const images = [];
+	const skipped = [];
+	const seen = /* @__PURE__ */ new Set();
+	const root = tryRealpath(workspace);
+	if (root === void 0) {
+		skipped.push(`工作区不可读: ${workspace}`);
+		return {
+			images,
+			skipped
+		};
+	}
+	for (const raw of extractMarkdownUrls(text)) {
+		const url = stripQueryHash(raw.trim());
+		if (url === "" || isRemote(url)) continue;
+		if (!isPngPath(url)) continue;
+		if (images.length >= maxCount) {
+			skipped.push(`超过 ${maxCount} 张上限，忽略后续图片`);
+			break;
+		}
+		const real = tryRealpath(resolve(root, url));
+		if (real === void 0) {
+			skipped.push(`文件不存在: ${url}`);
+			continue;
+		}
+		if (!containedIn(root, real)) {
+			skipped.push(`越出工作区: ${url}`);
+			continue;
+		}
+		if (seen.has(real)) continue;
+		let size;
+		try {
+			size = statSync(real).size;
+		} catch {
+			skipped.push(`无法读取: ${url}`);
+			continue;
+		}
+		if (size > maxBytes) {
+			skipped.push(`超过 ${maxBytes} 字节: ${url}`);
+			continue;
+		}
+		let buffer;
+		try {
+			buffer = readFileSync(real);
+		} catch {
+			skipped.push(`无法读取: ${url}`);
+			continue;
+		}
+		if (buffer.subarray(0, PNG_MAGIC.length).compare(PNG_MAGIC) !== 0) {
+			skipped.push(`不是 PNG: ${url}`);
+			continue;
+		}
+		seen.add(real);
+		images.push({
+			absPath: real,
+			filename: basename(real),
+			buffer
+		});
+	}
+	return {
+		images,
+		skipped
+	};
+}
+function mediaIdOf(result) {
+	const id = result.media_id ?? result.mediaId;
+	return id !== void 0 && id !== "" ? id : void 0;
+}
+/**
+* Upload each PNG then push it as a WeCom image message.
+* Failures are logged and do not abort the remaining files.
+* @param ws - WeCom client.
+* @param chatid - 1:1 userid or group chatid.
+* @param images - files from {@link collectReplyPngs}.
+* @returns counts of sent vs failed filenames.
+*/
+async function sendCollectedPngs(ws, chatid, images) {
+	const failed = [];
+	let sent = 0;
+	for (const image of images) try {
+		const mediaId = mediaIdOf(await ws.uploadMedia(image.buffer, {
+			type: "image",
+			filename: image.filename
+		}));
+		if (mediaId === void 0) {
+			failed.push(image.filename);
+			console.error(`[im-bridge] 上传成功但无 media_id: ${image.filename}`);
+			continue;
+		}
+		await ws.sendMediaMessage(chatid, "image", mediaId);
+		sent++;
+		console.log(`[im-bridge] 已发送图片 ${image.filename} (${image.buffer.length}B)`);
+	} catch (error) {
+		failed.push(image.filename);
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`[im-bridge] 发送图片失败 ${image.filename}: ${message}`);
+	}
+	return {
+		sent,
+		failed
+	};
+}
+//#endregion
 //#region src/wecom.ts
 /** Default stream-animation copy; Config / cordis patch may override. */
 const DEFAULT_THINKING = {
@@ -499,9 +674,14 @@ function apply(ctx, config) {
 				const outcome = summarize(st.agent.session.events, firstSeq);
 				if (stopThinking) stopThinking();
 				const ms = Date.now() - startedAt;
-				const reply = truncate(outcome.text || "(agent 无输出)", (cfg().maxReplyBytes || 2e4) - 200) + footerOf(ms);
+				const body = outcome.text || "(agent 无输出)";
+				const collected = collectReplyPngs(body, cfg().workspace);
+				for (const reason of collected.skipped) console.warn(`[im-bridge] 跳过图片: ${reason}`);
+				let reply = truncate(body, (cfg().maxReplyBytes || 2e4) - 200) + footerOf(ms);
+				if (collected.skipped.length > 0) reply = truncate(`${reply}\n⚠️ ${collected.skipped.length} 张图片未发送（过大、越权或不存在）`, cfg().maxReplyBytes || 2e4);
 				console.log(`[im-bridge] ${sender} 完成 (${Buffer.byteLength(reply, "utf8")}B, ${fmtDuration(ms)})`);
 				await sendFinal(ws, frame, streamId, reply);
+				if (collected.images.length > 0) await sendCollectedPngs(ws, resolveChatId(frame, sender), collected.images);
 			} catch (error) {
 				if (stopThinking) stopThinking();
 				const ms = Date.now() - startedAt;
