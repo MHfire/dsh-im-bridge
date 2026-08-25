@@ -22,27 +22,27 @@ This repository ships two run modes:
 
 | Mode | Description | Status |
 |---|---|---|
-| **`plugin/`** | DSH plugin (recommended): mounts into a dsh profile, creates Agents **in-process**, per-sender durable sessions visible in the Web GUI, with a Settings config card | Recommended |
+| **`plugin/`** | DSH plugin (recommended): mounts into a dsh profile, creates Agents **in-process**, one durable session per WeCom chat window, visible in the Web GUI, with a Settings config card | Recommended |
 | **`bridge.js`** | Legacy standalone script: spawns `dsh --profile headless` per message (stateless) | Kept as fallback |
 
 ## Features
 
 - **Direct WebSocket**: no public URL, no message crypto, no IP allowlist
 - **In-process Agent**: no child process spawn; sessions register with the GUI for live view and continue-chat
-- **Per-sender durable sessions**: the same WeCom user reuses one session with memory
+- **One session per WeCom window**: 1:1 = that user; the same group shares one session; a person’s DM and group chats stay separate
 - **Custom persona**: zh/en packaged defaults follow Settings language; override with `persona.md` next to the profile patch
 - **Settings card**: credentials, allow-list, timeouts, copy, and model overrides are editable in the GUI; live fields apply on the next message, credential changes need a restart to open the WebSocket
 - **Streaming animation + completion footer**: stage/progress/ETA while running; duration summary when done
 - **Workspace PNGs in the reply**: `![caption](relative/path.png)` in the final reply is uploaded and sent as a separate image after the text
 - Auth / heartbeat / exponential reconnect (built into the SDK)
-- Serial handling per sender to avoid concurrent mix-ups
+- Serial handling per WeCom window to avoid concurrent mix-ups
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     U[WeCom user] -- WebSocket --> B[dsh-im-bridge]
-    B -->|plugin mode| A1[In-process Agent<br/>agents.create + per-sender session]
+    B -->|plugin mode| A1[In-process Agent<br/>agents.create + per-window session]
     B -->|bridge.js mode| A2[dsh --profile headless<br/>one process per message]
     A1 --> S[(Sessions/settings<br/>live in GUI)]
     A2 --> S
@@ -127,7 +127,7 @@ After the plugin is installed and `dsh web` is running, open **Settings → Plug
 | Task timeout (seconds) | `agentTimeoutSec` | Applies on the next message |
 | Placeholder while thinking | `startHint` | Applies on the next message |
 | Denied-sender reply / welcome | `deniedMessage` / `welcomeMessage` | Applies on the next message |
-| WeCom-only provider / model | `provider` / `model` | Applies only to later new sender sessions; both must be set to override |
+| WeCom-only provider / model | `provider` / `model` | Applies only to later new WeCom-window sessions; both must be set to override |
 
 `workspace`, persona, `thinking`, and similar fields are not on the card; see the table below or [`plugin/README.en.md`](./plugin/README.en.md).
 

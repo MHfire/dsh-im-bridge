@@ -2,13 +2,12 @@
  * dsh-im-bridge — WeCom AI bot ⇄ DSH Agent host plugin.
  *
  * Function-plugin shape (`name` / `inject` / `Config` / `apply`, no default
- * export). Messages create in-process Agents so per-sender sessions stay on
+ * export). Messages create in-process Agents so per-chat-window sessions stay on
  * the same Loader tree as the Web GUI. Settings register through
  * `installSettingsSection`; live fields read `source()`, credentials still
  * require a process restart to open the WebSocket.
  */
 
-import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,6 +22,15 @@ import {
   resolveChatId,
   sendCollectedPngs,
 } from './reply-images.ts'
+import {
+  isLegacyPinnedWecomTitle,
+  resolveWecomSession,
+  wecomAgentBind,
+  wecomDisplayTitle,
+  wecomSessionId,
+  WecomSessionReject,
+  type WecomSessionRef,
+} from './session-key.ts'
 import {
   DEFAULT_THINKING,
   footerOf,
@@ -145,12 +153,17 @@ interface ChunkData {
 interface LiveAgent {
   whenIdle(): Promise<void>
   followup(message: unknown): void
-  session: { seq: number; events: readonly LoggedEvent[] }
+  session: {
+    seq: number
+    events: readonly LoggedEvent[]
+    header?: { cwd?: string; agentPreset?: string }
+  }
 }
 
-interface SenderState {
+interface ChatState {
   agent?: LiveAgent
   sessionId?: string
+  kind?: 'single' | 'group'
   queue: Promise<unknown>
   lastActivity: string
   activityClearAt: number
@@ -159,21 +172,74 @@ interface SenderState {
   streamStatusTick: number
 }
 
+/** Placeholder Map value so later messages on the same key share one queue. */
+function emptyChatState(): ChatState {
+  return {
+    queue: Promise.resolve(),
+    lastActivity: '',
+    activityClearAt: 0,
+    lastToolByCallId: new Map(),
+    modelStreamPhase: 'idle',
+    streamStatusTick: 0,
+  }
+}
+
 interface DefaultModel {
   currentSelection(): { provider: string; model: string; reasoningEffort?: string }
 }
 
 interface AgentRegistry {
+  get(id: ReturnType<typeof SessionId>): LiveAgent | undefined
   create(options: {
     sessionId: ReturnType<typeof SessionId>
     meta?: { cwd?: string; agentPreset?: string }
     agentOptions?: { provider: string; model: string }
     setup?: (agentCtx: Context) => void | Promise<void>
   }): Promise<{ agent: LiveAgent }>
+  resume(options: {
+    resumeSessionId: ReturnType<typeof SessionId>
+    agentOptions?: { provider: string; model: string }
+    setup?: (agentCtx: Context) => void | Promise<void>
+  }): Promise<{ agent: LiveAgent }>
+}
+
+interface SessionPersistenceHeader {
+  id: string
+  cwd?: string
+  agentPreset?: string
+}
+
+interface SessionPersistence {
+  list(): Promise<SessionPersistenceHeader[]>
 }
 
 interface SessionStore {
   flush(session: LiveAgent['session']): Promise<void>
+}
+
+interface SessionTitleSnapshot {
+  title: string
+  source: { kind: string }
+}
+
+interface SessionTitleService {
+  get(session: LiveAgent['session']): SessionTitleSnapshot | undefined
+  refresh(session: LiveAgent['session']): Promise<unknown>
+}
+
+interface TitledSession {
+  id: string
+  append(type: 'session/title', data: {
+    title: string
+    messageSeqs: number[]
+    source: unknown
+  }): void
+}
+
+interface SessionTitleEventData {
+  title?: string
+  messageSeqs?: number[]
+  source?: unknown
 }
 
 interface AgentPresets {
@@ -280,7 +346,7 @@ function resolvePersona(config: Config, settings: SettingsReader | undefined): s
 }
 
 /**
- * Resolve the model for a new sender session. Both provider and model must be
+ * Resolve the model for a new WeCom chat session. Both provider and model must be
  * non-empty to override; otherwise fall back to agent-default-model.
  */
 function resolveSelection(
@@ -338,58 +404,140 @@ export function apply(ctx: Context, config: Config): void {
       return
     }
 
-    const senders = new Map<string, SenderState>()
+    const chats = new Map<string, ChatState>()
 
-    async function ensureAgent(sender: string): Promise<SenderState> {
-      let st = senders.get(sender)
-      if (st !== undefined && st.agent !== undefined) return st
-      const sessionId = SessionId(`session-${randomUUID()}`)
-      const selection = resolveSelection(cfg(), defaultModel)
-      const presets = ctx.get('agentPresets') as AgentPresets | undefined
-      let resolvedId = cfg().agentPreset
-      if (presets !== undefined) {
-        resolvedId = (await presets.resolve(cfg().agentPreset)).id
+    function prefixWecomTitle(session: TitledSession, st: ChatState, event: LoggedEvent): void {
+      if (st.kind === undefined) return
+      const data = event.data as SessionTitleEventData
+      const raw = typeof data.title === 'string' ? data.title : ''
+      const next = wecomDisplayTitle(st.kind, raw)
+      if (next === raw) return
+      const messageSeqs = Array.isArray(data.messageSeqs) ? data.messageSeqs.filter((seq) => typeof seq === 'number') : []
+      try {
+        session.append('session/title', {
+          title: next,
+          messageSeqs,
+          source: data.source ?? { kind: 'fallback' },
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[im-bridge] 加标题前缀失败: ${message}`)
       }
-      const { agent } = await agents.create({
-        sessionId,
-        meta: { cwd: cfg().workspace, agentPreset: resolvedId },
-        agentOptions: { provider: selection.provider, model: selection.model },
-        setup: async (agentCtx) => {
-          const selected = { current: selection, assembled: undefined }
-          installModelSelection(agentCtx, selected)
-          if (presets !== undefined) await presets.mount(agentCtx, resolvedId)
-          agentCtx.inject(['systemPrompt'], (promptCtx) => {
-            promptCtx.systemPrompt.section({
-              name: 'deployment:persona',
-              order: 0,
-              text: () => resolvePersona(cfg(), settings),
-            })
-          })
-        },
-      })
-      st = {
-        agent,
-        sessionId,
-        queue: Promise.resolve(),
-        lastActivity: '',
-        activityClearAt: 0,
-        lastToolByCallId: new Map(),
-        modelStreamPhase: 'idle',
-        streamStatusTick: 0,
-      }
-      senders.set(sender, st)
-      console.log(`[im-bridge] 为 ${sender} 创建会话 ${sessionId}`)
-      return st
     }
 
-    ctx.on('session/event', (session: { id: string }, event: LoggedEvent) => {
+    async function unpinLegacyWecomTitle(agent: LiveAgent): Promise<void> {
+      const titles = ctx.get('sessionTitle') as SessionTitleService | undefined
+      if (titles === undefined) return
+      try {
+        const snapshot = titles.get(agent.session)
+        if (snapshot?.source?.kind !== 'user') return
+        if (!isLegacyPinnedWecomTitle(snapshot.title)) return
+        await titles.refresh(agent.session)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[im-bridge] 解开旧标题失败: ${message}`)
+      }
+    }
+
+    async function ensureAgent(ref: WecomSessionRef): Promise<ChatState> {
+      let st = chats.get(ref.key)
+      if (st === undefined) {
+        st = emptyChatState()
+        chats.set(ref.key, st)
+      }
+      st.kind = ref.kind
+      if (st.agent !== undefined) return st
+
+      const sessionId = SessionId(wecomSessionId(ref.key))
+      const live = agents.get(sessionId)
+      const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
+      const stored = persistence === undefined
+        ? undefined
+        : (await persistence.list()).find((header) => header.id === sessionId)
+      const bind = wecomAgentBind(live !== undefined, stored !== undefined)
+
+      const attach = (agent: LiveAgent, how: 'adopt' | 'resume' | 'create'): void => {
+        st.agent = agent
+        st.sessionId = sessionId
+        st.kind = ref.kind
+        void unpinLegacyWecomTitle(agent)
+        const cwd = agent.session.header?.cwd ?? stored?.cwd
+        if (cwd !== undefined && cwd !== cfg().workspace) {
+          console.warn(
+            `[im-bridge] 会话 ${sessionId} 仍使用存档目录 ${cwd}，当前 workspace=${cfg().workspace}`,
+          )
+        }
+        console.log(
+          `[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ''}`,
+        )
+      }
+
+      if (bind === 'adopt' && live !== undefined) {
+        attach(live, 'adopt')
+        return st
+      }
+
+      const selection = resolveSelection(cfg(), defaultModel)
+      const presets = ctx.get('agentPresets') as AgentPresets | undefined
+      const presetId = (bind === 'resume' && stored?.agentPreset) ? stored.agentPreset : cfg().agentPreset
+      let resolvedId = presetId
+      if (presets !== undefined) {
+        resolvedId = (await presets.resolve(presetId)).id
+      }
+      const setup = async (agentCtx: Context): Promise<void> => {
+        const selected = { current: selection, assembled: undefined }
+        installModelSelection(agentCtx, selected)
+        if (presets !== undefined) await presets.mount(agentCtx, resolvedId)
+        agentCtx.inject(['systemPrompt'], (promptCtx) => {
+          promptCtx.systemPrompt.section({
+            name: 'deployment:persona',
+            order: 0,
+            text: () => resolvePersona(cfg(), settings),
+          })
+        })
+      }
+      const agentOptions = { provider: selection.provider, model: selection.model }
+
+      try {
+        if (bind === 'resume') {
+          const { agent } = await agents.resume({
+            resumeSessionId: sessionId,
+            agentOptions,
+            setup,
+          })
+          attach(agent, 'resume')
+          return st
+        }
+        const { agent } = await agents.create({
+          sessionId,
+          meta: { cwd: cfg().workspace, agentPreset: resolvedId },
+          agentOptions,
+          setup,
+        })
+        attach(agent, 'create')
+        return st
+      } catch (error) {
+        const raced = agents.get(sessionId)
+        if (raced !== undefined) {
+          attach(raced, 'adopt')
+          return st
+        }
+        throw error
+      }
+    }
+
+    ctx.on('session/event', (session: TitledSession, event: LoggedEvent) => {
       const thinking = cfg().thinking
       const prefix = thinking?.activityPrefix ?? DEFAULT_THINKING.activityPrefix
       const flashMs = Number.isFinite(thinking?.intervalMs) && thinking.intervalMs > 0
         ? thinking.intervalMs
         : DEFAULT_THINKING.intervalMs
-      for (const st of senders.values()) {
+      for (const st of chats.values()) {
         if (st.sessionId !== session.id) continue
+        if (event.type === 'session/title') {
+          prefixWecomTitle(session, st, event)
+          continue
+        }
         if (event.type === 'assistant/chunk') {
           const next = streamPhaseFromChunk((event.data as ChunkData).chunk)
           if (next !== null) st.modelStreamPhase = next
@@ -424,8 +572,8 @@ export function apply(ctx: Context, config: Config): void {
       generateReqId: (kind: string) => string
     }
 
-    async function handle(frame: WecomFrame, sender: string, content: string): Promise<void> {
-      const st = await ensureAgent(sender)
+    async function handle(frame: WecomFrame, ref: WecomSessionRef, content: string): Promise<void> {
+      const st = await ensureAgent(ref)
       const startedAt = Date.now()
       const streamId = generateReqId('stream')
       let stopThinking: (() => void) | null = null
@@ -470,7 +618,7 @@ export function apply(ctx: Context, config: Config): void {
         console.error(`[im-bridge] 占位回复失败: ${message}`)
       }
       try {
-        if (st.agent === undefined) throw new Error('im-bridge: sender agent missing')
+        if (st.agent === undefined) throw new Error('im-bridge: chat agent missing')
         await st.agent.whenIdle()
         const firstSeq = st.agent.session.seq
         st.agent.followup(createUserMessage({
@@ -494,10 +642,10 @@ export function apply(ctx: Context, config: Config): void {
             cfg().maxReplyBytes || 20000,
           )
         }
-        console.log(`[im-bridge] ${sender} 完成 (${Buffer.byteLength(reply, 'utf8')}B, ${fmtDuration(ms)})`)
+        console.log(`[im-bridge] ${ref.key} 完成 (${Buffer.byteLength(reply, 'utf8')}B, ${fmtDuration(ms)})`)
         await sendFinal(ws, frame, streamId, reply)
         if (collected.images.length > 0) {
-          await sendCollectedPngs(ws, resolveChatId(frame, sender), collected.images)
+          await sendCollectedPngs(ws, resolveChatId(frame, ref.sender), collected.images)
         }
       } catch (error) {
         if (stopThinking) stopThinking()
@@ -524,23 +672,29 @@ export function apply(ctx: Context, config: Config): void {
     ws.on('message.text', ((frame: WecomFrame) => {
       const content = (frame.body?.text?.content || '').trim()
       if (!content) return
-      const sender = frame.body?.sender?.userid || frame.body?.from?.userid || frame.body?.userid || 'unknown'
-      if (cfg().allowFrom.length > 0 && !cfg().allowFrom.includes(sender)) {
+      let ref: WecomSessionRef
+      try {
+        ref = resolveWecomSession(frame)
+      } catch (error) {
+        if (error instanceof WecomSessionReject) {
+          console.error(`[im-bridge] ${error.reply}`)
+          void ws.replyStream(frame, generateReqId('stream'), error.reply, true).catch(() => {})
+          return
+        }
+        throw error
+      }
+      if (cfg().allowFrom.length > 0 && !cfg().allowFrom.includes(ref.sender)) {
         void ws.replyStream(frame, generateReqId('stream'), cfg().deniedMessage, true).catch(() => {})
         return
       }
-      console.log(`[im-bridge] 收到 from=${sender}: ${content.slice(0, 100)}`)
-      const st = senders.get(sender) ?? {
-        queue: Promise.resolve(),
-        lastActivity: '',
-        activityClearAt: 0,
-        lastToolByCallId: new Map(),
-        modelStreamPhase: 'idle' as const,
-        streamStatusTick: 0,
-      }
-      senders.set(sender, st)
+      console.log(
+        `[im-bridge] 收到 key=${ref.key} userid=${ref.sender} chattype=${String(frame.body?.chattype ?? '')} chatid=${ref.chatid ?? ''}: ${content.slice(0, 100)}`,
+      )
+      const st = chats.get(ref.key) ?? emptyChatState()
+      st.kind = ref.kind
+      chats.set(ref.key, st)
       st.queue = st.queue
-        .then(() => handle(frame, sender, content))
+        .then(() => handle(frame, ref, content))
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error)
           console.error(`[im-bridge] 任务异常: ${message}`)

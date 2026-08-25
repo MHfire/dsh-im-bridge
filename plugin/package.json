@@ -1,7 +1,7 @@
 {
   "name": "@mhfire/dsh-im-bridge",
   "version": "0.2.0",
-  "description": "企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接插件：进程内创建 Agent(per-sender 持久会话)，会话在 GUI 实时可见；含 Settings 插件配置卡片",
+  "description": "企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接插件：进程内按企微窗口创建 Agent（单聊一人一条、同一群共用一条），会话在 GUI 实时可见；含 Settings 插件配置卡片",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,7 +31,7 @@
   "scripts": {
     "build": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts",
     "prepare": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts",
-    "test": "node --experimental-strip-types --test tests/reply-images.test.ts"
+    "test": "node --experimental-strip-types --test tests/reply-images.test.ts tests/session-key.test.ts"
   },
   "dsh": {
     "bundle": {

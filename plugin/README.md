@@ -4,9 +4,20 @@
 
 企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接 **DSH 插件**。
 
-在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：per-sender 持久会话（同一企业微信用户复用同一会话，有上下文记忆），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`botId` / `secret`、白名单、超时、提示语、模型覆盖，写入 `settings.yaml`）。
+在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：按**企微窗口**拆分持久会话（单聊 = 该用户一条；同一群里所有人共用一条；同一个人的私聊和群聊互不串上下文），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`botId` / `secret`、白名单、超时、提示语、模型覆盖，写入 `settings.yaml`）。
 
 Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。卡片可填 `botId` / `secret`，与 profile patch 写入同一用户层；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
+
+## 会话粒度
+
+一条 DSH 会话对应一个企微聊天窗口，而不是「同一个 userid 的所有窗口」：
+
+- **单聊**：`single:<userid>`，该用户一条 Agent
+- **群聊**：`group:<chatid>`，群内所有人共用一条 Agent 和同一条串行队列（两人同时发也不会并发 `followup`）
+- `allowFrom` 仍按**发送者** userid 拦截；被拒的人不进队
+- 进程重启后用稳定 id `wecom-` + key 的短 hash 续上同一条会话：进程里已有活 Agent 就直接采用（例如浏览器已打开该行），存档里有就 `resume`，都没有才 `create`。resume 的 cwd / preset 跟存档，不跟当前配置；cwd 不一致时打警告，不改写。
+- GUI 标题为「企业微信·私聊/群」+ 第一句用户话（与其它会话一样由 DSH 生成），不再露出 userid / chatid；同类型窗口若第一句话相近，侧栏仍是两行
+- 所有窗口仍共用同一个 `workspace`（文件 / rag 环境），与聊天上下文分窗是两件事
 
 ## 兼容的 DeepSeek Harness 版本
 
@@ -66,7 +77,7 @@ dsh plugin --profile web add <本包路径>
 | 开始处理时的占位提示 | `startHint` | 下一轮消息生效 |
 | 非白名单拒绝文案 | `deniedMessage` | 下一轮消息生效 |
 | 进入会话欢迎语 | `welcomeMessage` | 下一轮消息生效 |
-| 企微专用 provider / model | `provider` / `model` | 只影响之后**新建**的发送者会话；须两项都填才覆盖，否则跟随 GUI 默认模型 |
+| 企微专用 provider / model | `provider` / `model` | 只影响之后**新建**的企微窗口会话；须两项都填才覆盖，否则跟随 GUI 默认模型 |
 
 `workspace`、`agentPreset`、`persona` / `personaFile`、`thinking`、`maxReplyBytes`、`reasoningEffort` 不在卡片上，仍在 profile patch 或下表中配置。本版本不做凭证热重连。
 
@@ -82,7 +93,7 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 | `agentTimeoutSec` | 单任务最长执行时间（秒），动画进度条/剩余估算的基准 |
 | `startHint` | 开始处理时的占位提示语 |
 | `agentPreset` | Agent 加入的 preset（默认 `standard`） |
-| `provider` / `model` | 企微专用模型；**两者都非空**才覆盖，否则跟随 GUI 的 `agent-default-model`；只填一项会告警并回退。Settings 可编，只影响之后新建的发送者会话 |
+| `provider` / `model` | 企微专用模型；**两者都非空**才覆盖，否则跟随 GUI 的 `agent-default-model`；只填一项会告警并回退。Settings 可编，只影响之后新建的企微窗口会话 |
 | `reasoningEffort` | 覆盖生效时可选的推理强度；未覆盖模型时忽略 |
 | `persona` / `personaFile` | 机器人「人设」；优先级：`personaFile` → `persona` → 包内默认（按 Host `locale.preference` 选中/英）；覆盖不跟语言切换；含敏感信息请勿入库 |
 | `maxReplyBytes` | 回复上限（字节，默认 20000） |

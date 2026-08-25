@@ -22,27 +22,27 @@
 
 | 形态 | 说明 | 状态 |
 |---|---|---|
-| **`plugin/`** | DSH 插件（推荐）：挂进 dsh profile，**进程内**创建 Agent，per-sender 持久会话，会话在 Web GUI 实时可见，含 Settings 配置卡片 | ✅ 推荐 |
+| **`plugin/`** | DSH 插件（推荐）：挂进 dsh profile，**进程内**创建 Agent，按企微窗口拆分持久会话，会话在 Web GUI 实时可见，含 Settings 配置卡片 | ✅ 推荐 |
 | **`bridge.js`** | 旧版独立脚本：每条消息 spawn `dsh --profile headless` 子进程（无状态） | 保留作回退 |
 
 ## ✨ 特性
 
 - ✅ **WebSocket 直连**：无需公网 URL、无需消息加解密、无需 IP 白名单
 - ✅ **进程内 Agent**：不 spawn 子进程，会话与 GUI 同进程注册，**实时可见、可续聊**
-- ✅ **per-sender 持久会话**：同一企业微信用户复用同一会话，有上下文记忆
+- ✅ **按企微窗口拆分会话**：单聊一人一条，同一群共用一条；同一个人的私聊和群聊互不串上下文
 - ✅ **人设可定制**：包内中/英默认人设跟 Settings 语言；可用 profile 同目录 `persona.md` 覆盖
 - ✅ **Settings 配置卡**：凭证、白名单、超时、提示语、模型覆盖可在 GUI 填写；热字段下一轮消息生效，改凭证须重启才连 WebSocket
 - ✅ **流式动画 + 执行简报**：处理中显示阶段状态/进度条/剩余估算，完成附耗时简报
 - ✅ **回复里的工作区 PNG**：最终回复中的 `![说明](相对路径.png)` 会在文字之后作为独立图片消息发出
 - ✅ 自动认证 / 心跳保活 / 断线指数退避重连（SDK 内置）
-- ✅ 同一发送者消息串行处理，防并发错乱
+- ✅ 同一企微窗口内消息串行处理，防并发踩上下文
 
 ## 🏗️ 架构
 
 ```mermaid
 flowchart LR
     U[企业微信用户] -- WebSocket --> B[dsh-im-bridge]
-    B -->|plugin 形态| A1[进程内 Agent<br/>agents.create + per-sender 会话]
+    B -->|plugin 形态| A1[进程内 Agent<br/>agents.create + 按窗口会话]
     B -->|bridge.js 形态| A2[dsh --profile headless<br/>每条消息独立进程]
     A1 --> S[(会话/设置<br/>GUI 实时可见)]
     A2 --> S
@@ -126,7 +126,7 @@ dsh plugin --profile web add <本仓库路径>/plugin
 | 单任务超时（秒） | `agentTimeoutSec` | 下一轮消息生效 |
 | 开始处理时的占位提示 | `startHint` | 下一轮消息生效 |
 | 非白名单拒绝文案 / 欢迎语 | `deniedMessage` / `welcomeMessage` | 下一轮消息生效 |
-| 企微专用 provider / model | `provider` / `model` | 只影响之后新建的发送者会话；须两项都填才覆盖 |
+| 企微专用 provider / model | `provider` / `model` | 只影响之后新建的企微窗口会话；须两项都填才覆盖 |
 
 `workspace`、人设、`thinking` 等不在卡片上，见下表或 [`plugin/README.md`](./plugin/README.md)。
 

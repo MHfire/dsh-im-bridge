@@ -4,9 +4,20 @@
 
 WeCom AI Bot ⇄ DeepSeek Harness Agent bridge — a **DSH plugin**.
 
-Creates Agents **in-process** inside a dsh profile (no child-process spawn): per-sender durable sessions (the same WeCom user reuses one session with memory), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`botId` / `secret`, allow-list, timeouts, copy, and model overrides, written to `settings.yaml`).
+Creates Agents **in-process** inside a dsh profile (no child-process spawn): one durable DSH session **per WeCom chat window** (1:1 = that user; everyone in the same group shares one session — a person’s DM and group chats stay separate), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`botId` / `secret`, allow-list, timeouts, copy, and model overrides, written to `settings.yaml`).
 
 The Host half registers the `im-bridge` namespace through `installSettingsSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. The card can set `botId` / `secret` on the same user layer as the profile patch. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
+
+## Session granularity
+
+One DSH session maps to one WeCom chat window, not “every window of the same userid”:
+
+- **1:1**: `single:<userid>` — one Agent for that user
+- **Group**: `group:<chatid>` — all members share one Agent and one serial queue (two people speaking at once still cannot concurrent-`followup`)
+- `allowFrom` still filters by **sender** userid; rejected senders are not enqueued
+- Process restart continues the same durable session via a stable `wecom-` + short hash of the key: adopt a live Agent if the process already has one (for example the browser already opened that row), `resume` from persistence otherwise, and `create` only when neither exists. Resume cwd / preset follow the archive, not the current config; a cwd mismatch logs a warning and is not rewritten.
+- The GUI title is `企业微信·私聊` / `企业微信·群` plus the first user prompt (the same automatic title as other sessions), not a userid / chatid; two windows of the same kind with similar first lines stay two sidebar rows
+- Every window still shares the same `workspace` (files / rag). That is environment isolation, separate from chat-context windows
 
 ## Compatible DeepSeek Harness versions
 
@@ -66,7 +77,7 @@ Fields, top to bottom:
 | Placeholder while thinking | `startHint` | Applies on the next message |
 | Denied-sender reply | `deniedMessage` | Applies on the next message |
 | Welcome message | `welcomeMessage` | Applies on the next message |
-| WeCom-only provider / model | `provider` / `model` | Applies only to **later new** sender sessions; both must be set to override, otherwise the GUI default model is used |
+| WeCom-only provider / model | `provider` / `model` | Applies only to **later new** WeCom-window sessions; both must be set to override, otherwise the GUI default model is used |
 
 `workspace`, `agentPreset`, `persona` / `personaFile`, `thinking`, `maxReplyBytes`, and `reasoningEffort` are not on the card; set them in the profile patch or the table below. This release does not hot-reconnect credentials.
 
@@ -82,7 +93,7 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 | `agentTimeoutSec` | Max seconds per task; also drives progress / ETA |
 | `startHint` | Placeholder text when processing starts |
 | `agentPreset` | Agent preset to mount (default `standard`) |
-| `provider` / `model` | WeCom-only model; **both must be non-empty** to override, otherwise follow the GUI `agent-default-model`. Filling only one warns and falls back. Editable in Settings; applies to later new sender sessions only |
+| `provider` / `model` | WeCom-only model; **both must be non-empty** to override, otherwise follow the GUI `agent-default-model`. Filling only one warns and falls back. Editable in Settings; applies to later new WeCom-window sessions only |
 | `reasoningEffort` | Optional effort when the WeCom override is in effect; ignored otherwise |
 | `persona` / `personaFile` | Bot persona; precedence: `personaFile` → `persona` → packaged default (zh/en via Host `locale.preference`); overrides do not follow language; do not commit secrets |
 | `maxReplyBytes` | Reply size cap in bytes (default 20000) |

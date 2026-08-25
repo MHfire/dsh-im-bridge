@@ -10,7 +10,7 @@
    │  WebSocket 长连接 (wss://openws.work.weixin.qq.com)
    ▼
 dsh-im-bridge 插件 (挂进 dsh profile)
-   │  进程内 agents.create() → DSH Agent（per-sender 持久会话）
+   │  进程内 agents.create() → DSH Agent（按企微窗口拆分会话）
    ▼
 replyStream 流式回复（阶段动画 + 进度条 + 最终简报）
 ```

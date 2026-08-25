@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +6,7 @@ import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionId } from "@deepseek-ai/dsh-session";
 import { installModelSelection } from "@deepseek-ai/dsh-agent";
 import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+import { createHash } from "node:crypto";
 /** PNG signature (first 8 bytes). */
 const PNG_MAGIC = Buffer.from([
 	137,
@@ -180,6 +180,112 @@ async function sendCollectedPngs(ws, chatid, images) {
 		sent,
 		failed
 	};
+}
+//#endregion
+//#region src/session-key.ts
+/**
+* Route WeCom inbound frames onto one DSH session per chat window:
+* 1:1 by userid, groups by chatid.
+*/
+/** Single-chat frame with no userid — caller must refuse, not merge. */
+var WecomSessionReject = class extends Error {
+	/** Short WeCom reply when the frame cannot be routed. */
+	reply;
+	/**
+	* @param reply - text sent back on the inbound frame.
+	*/
+	constructor(reply) {
+		super(reply);
+		this.name = "WecomSessionReject";
+		this.reply = reply;
+	}
+};
+/**
+* Sender userid from official `from.userid`, then `body.userid`.
+* Does not read `sender` (not on the SDK message type).
+*/
+function senderUserid(frame) {
+	const from = frame.body?.from?.userid?.trim();
+	if (from) return from;
+	const body = frame.body?.userid?.trim();
+	if (body) return body;
+	return "";
+}
+function isGroupChat(chattype, chatid) {
+	if (chattype === "group" || chattype === 2 || chattype === "2") return true;
+	if (chatid !== "" && chattype !== "single" && chattype !== 1 && chattype !== "1") return true;
+	return false;
+}
+/** GUI channel prefix by window kind (no userid / chatid). */
+const WECOM_TITLE_PREFIX = {
+	single: "企业微信·私聊",
+	group: "企业微信·群"
+};
+/** Leading `企业微信·` / legacy `企微·` channel labels. */
+const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)\s*/u;
+/**
+* Sidebar title: channel kind plus first-prompt text, never an id.
+* @param kind - {@link WecomSessionRef.kind}.
+* @param raw - automatic or previously prefixed title.
+*/
+function wecomDisplayTitle(kind, raw) {
+	const prefix = WECOM_TITLE_PREFIX[kind];
+	const stripped = raw.replace(CHANNEL_PREFIX, "").trim();
+	return stripped === "" ? prefix : `${prefix} ${stripped}`;
+}
+/** Previously pinned `企微·私聊/群 <id>` titles from the id-based rename. */
+function isLegacyPinnedWecomTitle(title) {
+	return /^(?:企微·(?:私聊|群))\s+\S/.test(title.trim());
+}
+function singleRef(sender) {
+	return {
+		key: `single:${sender}`,
+		kind: "single",
+		sender
+	};
+}
+/**
+* Stable DSH session id for a WeCom window (survives process restart).
+* @param key - {@link WecomSessionRef.key}.
+*/
+function wecomSessionId(key) {
+	return `wecom-${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
+}
+/**
+* Choose adopt / resume / create. Live Agent wins; a persisted header
+* without a live Agent resumes; otherwise create.
+* @param live - `agents.get(sessionId)` returned an Agent.
+* @param persisted - persistence `list()` included this session id.
+*/
+function wecomAgentBind(live, persisted) {
+	if (live) return "adopt";
+	if (persisted) return "resume";
+	return "create";
+}
+/**
+* Map one inbound frame to a chat-window session.
+* Group without `chatid` falls back to 1:1 when userid is present.
+* 1:1 without userid throws {@link WecomSessionReject}.
+*/
+function resolveWecomSession(frame) {
+	const sender = senderUserid(frame);
+	const chattype = frame.body?.chattype;
+	const chatid = frame.body?.chatid?.trim() ?? "";
+	if (isGroupChat(chattype, chatid)) {
+		if (chatid === "") {
+			if (sender === "") throw new WecomSessionReject("无法识别会话，已忽略");
+			console.error(`[im-bridge] 群消息缺少 chatid, 退回单聊 key from=${sender}`);
+			return singleRef(sender);
+		}
+		return {
+			key: `group:${chatid}`,
+			kind: "group",
+			sender,
+			chatid
+		};
+	}
+	if (sender === "") throw new WecomSessionReject("无法识别发送者，已忽略");
+	return singleRef(sender);
 }
 //#endregion
 //#region src/wecom.ts
@@ -379,7 +485,7 @@ async function sendFinal(ws, frame, streamId, content) {
 * dsh-im-bridge — WeCom AI bot ⇄ DSH Agent host plugin.
 *
 * Function-plugin shape (`name` / `inject` / `Config` / `apply`, no default
-* export). Messages create in-process Agents so per-sender sessions stay on
+* export). Messages create in-process Agents so per-chat-window sessions stay on
 * the same Loader tree as the Web GUI. Settings register through
 * `installSettingsSection`; live fields read `source()`, credentials still
 * require a process restart to open the WebSocket.
@@ -438,6 +544,17 @@ const Config = z.object({
 	deniedMessage: z.string().default("无权访问本服务"),
 	welcomeMessage: z.string().default("👋 办公助手已就绪。直接发消息即可，例如查文件、整理文档、查资料或处理日常事务。")
 });
+/** Placeholder Map value so later messages on the same key share one queue. */
+function emptyChatState() {
+	return {
+		queue: Promise.resolve(),
+		lastActivity: "",
+		activityClearAt: 0,
+		lastToolByCallId: /* @__PURE__ */ new Map(),
+		modelStreamPhase: "idle",
+		streamStatusTick: 0
+	};
+}
 /** Join assistant text from one turn starting at `firstSeq`. */
 function summarize(events, firstSeq) {
 	let started = false;
@@ -498,7 +615,7 @@ function resolvePersona(config, settings) {
 	}
 }
 /**
-* Resolve the model for a new sender session. Both provider and model must be
+* Resolve the model for a new WeCom chat session. Both provider and model must be
 * non-empty to override; otherwise fall back to agent-default-model.
 */
 function resolveSelection(config, defaultModel) {
@@ -550,60 +667,127 @@ function apply(ctx, config) {
 			console.warn("[im-bridge] 跳过启动: 缺少 botId/secret。请在 profile cordis.patch.yml 或 Settings → 插件配置中填写后重启。");
 			return;
 		}
-		const senders = /* @__PURE__ */ new Map();
-		async function ensureAgent(sender) {
-			let st = senders.get(sender);
-			if (st !== void 0 && st.agent !== void 0) return st;
-			const sessionId = SessionId(`session-${randomUUID()}`);
+		const chats = /* @__PURE__ */ new Map();
+		function prefixWecomTitle(session, st, event) {
+			if (st.kind === void 0) return;
+			const data = event.data;
+			const raw = typeof data.title === "string" ? data.title : "";
+			const next = wecomDisplayTitle(st.kind, raw);
+			if (next === raw) return;
+			const messageSeqs = Array.isArray(data.messageSeqs) ? data.messageSeqs.filter((seq) => typeof seq === "number") : [];
+			try {
+				session.append("session/title", {
+					title: next,
+					messageSeqs,
+					source: data.source ?? { kind: "fallback" }
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`[im-bridge] 加标题前缀失败: ${message}`);
+			}
+		}
+		async function unpinLegacyWecomTitle(agent) {
+			const titles = ctx.get("sessionTitle");
+			if (titles === void 0) return;
+			try {
+				const snapshot = titles.get(agent.session);
+				if (snapshot?.source?.kind !== "user") return;
+				if (!isLegacyPinnedWecomTitle(snapshot.title)) return;
+				await titles.refresh(agent.session);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`[im-bridge] 解开旧标题失败: ${message}`);
+			}
+		}
+		async function ensureAgent(ref) {
+			let st = chats.get(ref.key);
+			if (st === void 0) {
+				st = emptyChatState();
+				chats.set(ref.key, st);
+			}
+			st.kind = ref.kind;
+			if (st.agent !== void 0) return st;
+			const sessionId = SessionId(wecomSessionId(ref.key));
+			const live = agents.get(sessionId);
+			const persistence = ctx.get("sessionPersistence");
+			const stored = persistence === void 0 ? void 0 : (await persistence.list()).find((header) => header.id === sessionId);
+			const bind = wecomAgentBind(live !== void 0, stored !== void 0);
+			const attach = (agent, how) => {
+				st.agent = agent;
+				st.sessionId = sessionId;
+				st.kind = ref.kind;
+				unpinLegacyWecomTitle(agent);
+				const cwd = agent.session.header?.cwd ?? stored?.cwd;
+				if (cwd !== void 0 && cwd !== cfg().workspace) console.warn(`[im-bridge] 会话 ${sessionId} 仍使用存档目录 ${cwd}，当前 workspace=${cfg().workspace}`);
+				console.log(`[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ""}`);
+			};
+			if (bind === "adopt" && live !== void 0) {
+				attach(live, "adopt");
+				return st;
+			}
 			const selection = resolveSelection(cfg(), defaultModel);
 			const presets = ctx.get("agentPresets");
-			let resolvedId = cfg().agentPreset;
-			if (presets !== void 0) resolvedId = (await presets.resolve(cfg().agentPreset)).id;
-			const { agent } = await agents.create({
-				sessionId,
-				meta: {
-					cwd: cfg().workspace,
-					agentPreset: resolvedId
-				},
-				agentOptions: {
-					provider: selection.provider,
-					model: selection.model
-				},
-				setup: async (agentCtx) => {
-					installModelSelection(agentCtx, {
-						current: selection,
-						assembled: void 0
+			const presetId = bind === "resume" && stored?.agentPreset ? stored.agentPreset : cfg().agentPreset;
+			let resolvedId = presetId;
+			if (presets !== void 0) resolvedId = (await presets.resolve(presetId)).id;
+			const setup = async (agentCtx) => {
+				installModelSelection(agentCtx, {
+					current: selection,
+					assembled: void 0
+				});
+				if (presets !== void 0) await presets.mount(agentCtx, resolvedId);
+				agentCtx.inject(["systemPrompt"], (promptCtx) => {
+					promptCtx.systemPrompt.section({
+						name: "deployment:persona",
+						order: 0,
+						text: () => resolvePersona(cfg(), settings)
 					});
-					if (presets !== void 0) await presets.mount(agentCtx, resolvedId);
-					agentCtx.inject(["systemPrompt"], (promptCtx) => {
-						promptCtx.systemPrompt.section({
-							name: "deployment:persona",
-							order: 0,
-							text: () => resolvePersona(cfg(), settings)
-						});
-					});
-				}
-			});
-			st = {
-				agent,
-				sessionId,
-				queue: Promise.resolve(),
-				lastActivity: "",
-				activityClearAt: 0,
-				lastToolByCallId: /* @__PURE__ */ new Map(),
-				modelStreamPhase: "idle",
-				streamStatusTick: 0
+				});
 			};
-			senders.set(sender, st);
-			console.log(`[im-bridge] 为 ${sender} 创建会话 ${sessionId}`);
-			return st;
+			const agentOptions = {
+				provider: selection.provider,
+				model: selection.model
+			};
+			try {
+				if (bind === "resume") {
+					const { agent } = await agents.resume({
+						resumeSessionId: sessionId,
+						agentOptions,
+						setup
+					});
+					attach(agent, "resume");
+					return st;
+				}
+				const { agent } = await agents.create({
+					sessionId,
+					meta: {
+						cwd: cfg().workspace,
+						agentPreset: resolvedId
+					},
+					agentOptions,
+					setup
+				});
+				attach(agent, "create");
+				return st;
+			} catch (error) {
+				const raced = agents.get(sessionId);
+				if (raced !== void 0) {
+					attach(raced, "adopt");
+					return st;
+				}
+				throw error;
+			}
 		}
 		ctx.on("session/event", (session, event) => {
 			const thinking = cfg().thinking;
 			const prefix = thinking?.activityPrefix ?? DEFAULT_THINKING.activityPrefix;
 			const flashMs = Number.isFinite(thinking?.intervalMs) && thinking.intervalMs > 0 ? thinking.intervalMs : DEFAULT_THINKING.intervalMs;
-			for (const st of senders.values()) {
+			for (const st of chats.values()) {
 				if (st.sessionId !== session.id) continue;
+				if (event.type === "session/title") {
+					prefixWecomTitle(session, st, event);
+					continue;
+				}
 				if (event.type === "assistant/chunk") {
 					const next = streamPhaseFromChunk(event.data.chunk);
 					if (next !== null) st.modelStreamPhase = next;
@@ -630,8 +814,8 @@ function apply(ctx, config) {
 			}
 		});
 		const { default: AiBot, generateReqId } = await import("@wecom/aibot-node-sdk");
-		async function handle(frame, sender, content) {
-			const st = await ensureAgent(sender);
+		async function handle(frame, ref, content) {
+			const st = await ensureAgent(ref);
 			const startedAt = Date.now();
 			const streamId = generateReqId("stream");
 			let stopThinking = null;
@@ -659,7 +843,7 @@ function apply(ctx, config) {
 				console.error(`[im-bridge] 占位回复失败: ${message}`);
 			}
 			try {
-				if (st.agent === void 0) throw new Error("im-bridge: sender agent missing");
+				if (st.agent === void 0) throw new Error("im-bridge: chat agent missing");
 				await st.agent.whenIdle();
 				const firstSeq = st.agent.session.seq;
 				st.agent.followup(createUserMessage({
@@ -679,9 +863,9 @@ function apply(ctx, config) {
 				for (const reason of collected.skipped) console.warn(`[im-bridge] 跳过图片: ${reason}`);
 				let reply = truncate(body, (cfg().maxReplyBytes || 2e4) - 200) + footerOf(ms);
 				if (collected.skipped.length > 0) reply = truncate(`${reply}\n⚠️ ${collected.skipped.length} 张图片未发送（过大、越权或不存在）`, cfg().maxReplyBytes || 2e4);
-				console.log(`[im-bridge] ${sender} 完成 (${Buffer.byteLength(reply, "utf8")}B, ${fmtDuration(ms)})`);
+				console.log(`[im-bridge] ${ref.key} 完成 (${Buffer.byteLength(reply, "utf8")}B, ${fmtDuration(ms)})`);
 				await sendFinal(ws, frame, streamId, reply);
-				if (collected.images.length > 0) await sendCollectedPngs(ws, resolveChatId(frame, sender), collected.images);
+				if (collected.images.length > 0) await sendCollectedPngs(ws, resolveChatId(frame, ref.sender), collected.images);
 			} catch (error) {
 				if (stopThinking) stopThinking();
 				const ms = Date.now() - startedAt;
@@ -707,22 +891,26 @@ function apply(ctx, config) {
 		ws.on("message.text", ((frame) => {
 			const content = (frame.body?.text?.content || "").trim();
 			if (!content) return;
-			const sender = frame.body?.sender?.userid || frame.body?.from?.userid || frame.body?.userid || "unknown";
-			if (cfg().allowFrom.length > 0 && !cfg().allowFrom.includes(sender)) {
+			let ref;
+			try {
+				ref = resolveWecomSession(frame);
+			} catch (error) {
+				if (error instanceof WecomSessionReject) {
+					console.error(`[im-bridge] ${error.reply}`);
+					ws.replyStream(frame, generateReqId("stream"), error.reply, true).catch(() => {});
+					return;
+				}
+				throw error;
+			}
+			if (cfg().allowFrom.length > 0 && !cfg().allowFrom.includes(ref.sender)) {
 				ws.replyStream(frame, generateReqId("stream"), cfg().deniedMessage, true).catch(() => {});
 				return;
 			}
-			console.log(`[im-bridge] 收到 from=${sender}: ${content.slice(0, 100)}`);
-			const st = senders.get(sender) ?? {
-				queue: Promise.resolve(),
-				lastActivity: "",
-				activityClearAt: 0,
-				lastToolByCallId: /* @__PURE__ */ new Map(),
-				modelStreamPhase: "idle",
-				streamStatusTick: 0
-			};
-			senders.set(sender, st);
-			st.queue = st.queue.then(() => handle(frame, sender, content)).catch((error) => {
+			console.log(`[im-bridge] 收到 key=${ref.key} userid=${ref.sender} chattype=${String(frame.body?.chattype ?? "")} chatid=${ref.chatid ?? ""}: ${content.slice(0, 100)}`);
+			const st = chats.get(ref.key) ?? emptyChatState();
+			st.kind = ref.kind;
+			chats.set(ref.key, st);
+			st.queue = st.queue.then(() => handle(frame, ref, content)).catch((error) => {
 				const message = error instanceof Error ? error.message : String(error);
 				console.error(`[im-bridge] 任务异常: ${message}`);
 			});
