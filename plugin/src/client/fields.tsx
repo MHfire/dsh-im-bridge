@@ -79,7 +79,8 @@ export function ValueField(props: FieldProps & {
 
 /**
  * Write-only credential control. The literal never rides a response, so the
- * control starts blank and reports only whether one is configured.
+ * control starts blank and reports only whether one is configured. A configured
+ * empty draft shows a dots placeholder so the box does not look unset.
  * @param props - the field's copy, staged text, and configured state.
  * @returns the labelled control.
  */
@@ -103,6 +104,7 @@ export function SecretField(props: Pick<FieldProps, 'id' | 'label' | 'hint' | 't
         type="password"
         autoComplete="off"
         value={props.text}
+        placeholder={props.configured && props.text === '' ? '••••••••' : undefined}
         disabled={props.disabled}
         onChange={(event) => { props.onEdit(event.target.value) }}
       />

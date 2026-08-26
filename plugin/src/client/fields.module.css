@@ -93,6 +93,10 @@
   cursor: default;
 }
 
+.input::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .inputInvalid {
   height: 34px;
   padding: 0 12px;

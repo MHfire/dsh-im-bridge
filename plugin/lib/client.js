@@ -115,7 +115,7 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region \0dsh-css:C:\Users\user\Desktop\dsh-im-bridge\plugin\src\client\fields.module.css.mjs
-		const css = ".OMD7cq_field{flex-direction:column;gap:6px;padding:12px 0;display:flex}.OMD7cq_field+.OMD7cq_field{border-top:1px solid var(--dsw-alias-border-l2)}.OMD7cq_head{align-items:center;gap:8px;display:flex}.OMD7cq_label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:500;line-height:1.5}.OMD7cq_badges{align-items:center;gap:8px;display:inline-flex}.OMD7cq_badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.OMD7cq_badgeMuted{white-space:nowrap;color:var(--dsw-alias-label-tertiary);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px}.OMD7cq_reset{font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;padding:0;font-size:12px;line-height:1.5}.OMD7cq_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.OMD7cq_reset:disabled{cursor:default}.OMD7cq_input{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_input:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:none}.OMD7cq_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.OMD7cq_inputInvalid{border:1px solid var(--dsw-alias-label-error);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_inputInvalid:focus-visible{outline:none}.OMD7cq_invalid{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.OMD7cq_hint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.5}";
+		const css = ".OMD7cq_field{flex-direction:column;gap:6px;padding:12px 0;display:flex}.OMD7cq_field+.OMD7cq_field{border-top:1px solid var(--dsw-alias-border-l2)}.OMD7cq_head{align-items:center;gap:8px;display:flex}.OMD7cq_label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:500;line-height:1.5}.OMD7cq_badges{align-items:center;gap:8px;display:inline-flex}.OMD7cq_badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.OMD7cq_badgeMuted{white-space:nowrap;color:var(--dsw-alias-label-tertiary);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px}.OMD7cq_reset{font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;padding:0;font-size:12px;line-height:1.5}.OMD7cq_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.OMD7cq_reset:disabled{cursor:default}.OMD7cq_input{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_input:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:none}.OMD7cq_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.OMD7cq_input::placeholder{color:var(--dsw-alias-label-tertiary)}.OMD7cq_inputInvalid{border:1px solid var(--dsw-alias-label-error);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_inputInvalid:focus-visible{outline:none}.OMD7cq_invalid{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.OMD7cq_hint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.5}";
 		const tagId = "@mhfire/dsh-im-bridge/fields.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -189,7 +189,8 @@ window.__ModuleLoader__.load({
 		}
 		/**
 		* Write-only credential control. The literal never rides a response, so the
-		* control starts blank and reports only whether one is configured.
+		* control starts blank and reports only whether one is configured. A configured
+		* empty draft shows a dots placeholder so the box does not look unset.
 		* @param props - the field's copy, staged text, and configured state.
 		* @returns the labelled control.
 		*/
@@ -217,6 +218,7 @@ window.__ModuleLoader__.load({
 						type: "password",
 						autoComplete: "off",
 						value: props.text,
+						placeholder: props.configured && props.text === "" ? "••••••••" : void 0,
 						disabled: props.disabled,
 						onChange: (event) => {
 							props.onEdit(event.target.value);
@@ -697,7 +699,7 @@ window.__ModuleLoader__.load({
 			invalidNumber: "Enter a finite number.",
 			botId: "Bot ID",
 			secret: "Secret",
-			secretHint: "Leave blank to keep the stored value. Save, then restart the process to open the WebSocket.",
+			secretHint: "The box stays empty on purpose (the stored value never rides the wire). A Configured badge means it is saved; type a new value to replace it. Save, then restart the process to open the WebSocket.",
 			secretConfigured: "Configured",
 			secretUnset: "Not configured",
 			allowFrom: "Allowed sender userids",
@@ -732,7 +734,7 @@ window.__ModuleLoader__.load({
 			invalidNumber: "请输入有效数字。",
 			botId: "Bot ID",
 			secret: "Secret",
-			secretHint: "留空保留已存值。保存后需重启进程才会连 WebSocket。",
+			secretHint: "框空是正常的（已存值不会传到浏览器）。徽章「已配置」即已保存；重新输入可覆盖。保存后需重启进程才会连 WebSocket。",
 			secretConfigured: "已配置",
 			secretUnset: "未配置",
 			allowFrom: "允许的发送者 userid",
