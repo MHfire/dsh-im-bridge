@@ -9,7 +9,7 @@
 Connect WeCom (WeChat Work) AI Bot over a long-lived WebSocket, hand messages to a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Agent, and stream replies back to WeCom.
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.4.0-blue)
+![version](https://img.shields.io/badge/version-0.4.2-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -32,7 +32,7 @@ This repository ships two run modes:
 - **One session per WeCom window**: 1:1 = that user; the same group shares one session; a person’s DM and group chats stay separate
 - **Channel-prefixed GUI titles**: sidebar is `企微·私聊` / `企微·群` plus the first user prompt; leading `@bot` mentions are stripped on arrival
 - **Archive starts a new session**: archiving that row in the GUI makes the next message silently open `wecom-<hash>-2`; the old session is no longer written to
-- **Optional WeCom office skills**: ships `@wecom/cli`; when enabled, WeCom sessions can use contacts, docs, calendar, meetings, todos, WeDrive, and mail (requires a non-empty `wecomCli.allowFrom`; chat `allowFrom` may be empty)
+- **Optional WeCom office skills**: ships `@wecom/cli`; when enabled, office **1:1** chats run office commands through the gated `wecom_cli` tool (requires a non-empty `wecomCli.allowFrom`; group chats and the GUI never see the tool)
 - **Custom persona**: zh/en packaged defaults follow Settings language; override with `persona.md` next to the profile patch
 - **Settings card**: credentials, allow-list, timeouts, copy, and model overrides are editable in the GUI; live fields apply on the next message, credential changes need a restart to open the WebSocket
 - **Streaming animation + completion footer**: stage/progress/ETA while running; duration summary when done
@@ -66,7 +66,7 @@ flowchart LR
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.4.0 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.4.2 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
 
 | DSH | This repo’s plugin |
 |---|---|
@@ -94,7 +94,7 @@ Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2
 ```powershell
 # 1) Install into the target profile (e.g. web)
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.0
+# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
 
 # 2) In $DSH_HOME/profiles/web/cordis.patch.yml, supply credentials
 #    (other fields ship as bundle defaults; override as needed)
@@ -181,7 +181,7 @@ When you see `[bridge] 认证成功, 等待消息...`, it is ready. Each message
 - Legacy `bridge.js` may hit `spawn EPERM` in restricted sandboxes; run normally
 - Legacy mode starts one agent process per message (expensive); the plugin does not
 - Agent output above ~20KB is truncated (WeCom `replyStream` limit is 20480 bytes)
-- Optional wecom-cli office skills: live in `$DSH_HOME/wecom-cli-skills` and are registered only on the office 1:1 agent (not group chats); leftovers in the workspace still leak to GUI; credentials live in workspace `.dsh/wecom-cli` (gitignore it) and there is no GUI confirmation (details in [`plugin/README.en.md`](./plugin/README.en.md#known-limitations-and-deferred-work))
+- Optional wecom-cli office skills: `wecomcli-*` and the gated `wecom_cli` tool register only on the office 1:1 agent; PATH `wecom-cli` always refuses; group chats do not get the office layer; leftovers in the workspace still leak to GUI; credentials live in workspace `.dsh/wecom-cli` (gitignore it); there is no GUI confirmation; the WeCom channel forbids `ask_user_question` (details in [`plugin/README.en.md`](./plugin/README.en.md#known-limitations-and-deferred-work))
 
 ## Security
 

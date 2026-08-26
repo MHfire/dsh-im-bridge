@@ -17,7 +17,7 @@ replyStream 流式回复（阶段动画 + 进度条 + 最终简报）
 
 - 采用企业微信「**智能机器人**」的 **WebSocket 长连接**模式：无需公网 URL、无需消息加解密、无需 IP 白名单，内网机器可直连；
 - SDK 自动完成认证（botId + secret）、心跳保活、断线指数退避重连；
-- 插件在 dsh 进程内创建 Agent，会话与 Web GUI 同进程注册 → 企微对话在 GUI 实时可见、可续聊。侧栏标题带「企微·私聊/群」渠道前缀；在 GUI 归档该会话后，同一窗口的下一条消息会开一条新会话。开启 `wecomCli.enabled` 且配置了非空 `wecomCli.allowFrom` 后，企微 Agent 可调用官方 wecom-cli 办公命令；`wecomcli-*` 装在 `$DSH_HOME/wecom-cli-skills`，只注入办公单聊 Agent。不要用 `npx skills add -g`；skills CLI 没有 `--dir`。
+- 插件在 dsh 进程内创建 Agent，会话与 Web GUI 同进程注册 → 企微对话在 GUI 实时可见、可续聊。侧栏标题带「企微·私聊/群」渠道前缀；在 GUI 归档该会话后，同一窗口的下一条消息会开一条新会话。开启 `wecomCli.enabled` 且配置了非空 `wecomCli.allowFrom` 后，办公单聊 Agent 通过门控工具 `wecom_cli` 调用官方 wecom-cli；`wecomcli-*` 装在 `$DSH_HOME/wecom-cli-skills`，与工具一并只注入办公单聊。PATH 上的 `wecom-cli` 拒绝执行。不要用 `npx skills add -g`；skills CLI 没有 `--dir`。所有企微会话禁止 `ask_user_question`。
 
 ## 一、创建智能机器人（一次性）
 
@@ -63,7 +63,7 @@ replyStream 流式回复（阶段动画 + 进度条 + 最终简报）
 - v1 仅处理**入站文本**（图片/语音/文件会忽略）；出站可将回复 Markdown 中的工作区 PNG 上传后作为独立图片发出
 - 回复上限约 **20KB**（企微 `replyStream` 上限 20480 字节），超出截断；
 - 旧版 `bridge.js`（每条消息 spawn 独立 `dsh --profile headless` 进程）保留作回退，`config.json` 启动时读取一次。
-- 可选 wecom-cli 办公能力须显式开启且 `wecomCli.allowFrom` 非空；`wecomcli-*` 装在 `$DSH_HOME/wecom-cli-skills`（Settings 卡片一键安装），工作区残留仍会泄漏给 GUI；凭证每机一份，企微通道没有 GUI 审批框。
+- 可选 wecom-cli 办公能力须显式开启且 `wecomCli.allowFrom` 非空；办公命令只经 `wecom_cli` 工具，PATH 上的 `wecom-cli` 一律拒绝；`wecomcli-*` 装在 `$DSH_HOME/wecom-cli-skills`（Settings 卡片一键安装），工作区残留仍会泄漏给 GUI；凭证每机一份，企微通道没有 GUI 审批框，禁止 `ask_user_question`。
 
 ## 六、后续渠道规划
 

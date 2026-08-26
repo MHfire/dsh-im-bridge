@@ -23,7 +23,7 @@ Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器
 
 ## 兼容的 DeepSeek Harness 版本
 
-DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.0 按实际调用的 API 对齐已发布 tag：
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.2 按实际调用的 API 对齐已发布 tag：
 
 | DSH | 本包 |
 |---|---|
@@ -40,7 +40,7 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # 或钉版本：
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.0
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
 ```
 
 在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中补密钥即可（其余项已有 bundle 默认，可按需覆盖）：
@@ -137,7 +137,7 @@ thinking:
 
 办公命令**只经 `wecom_cli` 工具执行**：模型传 `argv`（`wecom-cli` 之后的参数数组），插件直接 spawn 官方二进制，并拒绝任何 `auth init`。PATH 上的 `wecom-cli` 是一个只打印拒绝信息并 `exit 1` 的 shim，所以群聊、GUI 以及任何 `pwsh wecom-cli` 都跑不通；shim 的文案会指回 `wecom_cli`。凭证目录不进程级导出，只在插件自己 spawn 时注入。
 
-`wecomCli.enabled` 默认关闭。开启 PATH 须同时配置非空 **`wecomCli.allowFrom`**（办公 userid）；根级 `allowFrom` 只管谁能聊天，空名单表示所有人可问诊断。办公名单为空时插件会告警并跳过 PATH / 授权。
+`wecomCli.enabled` 默认关闭。开启须同时配置非空 **`wecomCli.allowFrom`**（办公 userid）；根级 `allowFrom` 只管谁能聊天，空名单表示所有人可问诊断。办公名单为空时插件会告警并跳过 shim / 授权 / `wecom_cli`。
 
 一次性准备：
 
@@ -209,8 +209,8 @@ Agent 的最终回复若包含指向**工作区内** PNG 的 Markdown，桥会�
 
 - wecom-cli 凭证在工作区 `<workspace>/.dsh/wecom-cli`（请 gitignore）。`wecomCli.allowFrom` 里的人借用这份凭据的办公权限；聊天名单（根级 `allowFrom`）不授予办公。办公单聊仍可向任意 `--chat-id` 发信，插件不锁定收件人。
 - 门控不是沙箱。`wecom_cli` 工具与 `wecomcli-*` 只注册到办公单聊 Agent，PATH 上的 `wecom-cli` 一律拒绝，凭证目录也只在插件自己 spawn 时注入；但同进程的 shell 仍可绕过：直接 `node <@wecom/cli 的 wecom.js 绝对路径>`，或 `npx --yes @wecom/cli` 并自行设置 `WECOM_CLI_CONFIG_DIR`。不设该变量时这类旁路会落到未授权的 `~/.config/wecom`。真正的隔离需要进程级沙箱。
-- 企微通道没有 GUI 审批框：发信、取消会议、删待办、覆盖文档等不可逆操作只靠 prompt 约束（先 `--dry-run`，等用户下一条确认）。`ask_user_question` 在此通道会挂到超时。
-- 工作区 `.dsh/skills` / `.agents/skills` 里残留的 `wecomcli-*` 仍会被同 cwd 的 GUI 和群聊发现。其它 skill 不受影响。`enabled: false` 只关企微侧 PATH / 授权 / prompt / 注册。
+- 企微通道没有 GUI 审批框：发信、取消会议、删待办、覆盖文档等不可逆操作只靠 prompt 约束（先 `--dry-run`，等用户下一条确认）。所有企微会话都禁止 `ask_user_question`（会挂到超时）。
+- 工作区 `.dsh/skills` / `.agents/skills` 里残留的 `wecomcli-*` 仍会被同 cwd 的 GUI 和群聊发现。其它 skill 不受影响。`enabled: false` 只关拒绝 shim、授权检查、`wecom_cli` 与 wecomcli-* 注册；通道上的 `ask_user_question` 禁令仍会注入。
 
 ## License
 

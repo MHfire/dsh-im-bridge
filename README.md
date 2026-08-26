@@ -9,7 +9,7 @@
 通过企业微信智能机器人的 WebSocket 长连接，把企业微信消息交给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Agent 处理，再将结果流式回复到微信。
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.4.0-blue)
+![version](https://img.shields.io/badge/version-0.4.2-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -32,7 +32,7 @@
 - ✅ **按企微窗口拆分会话**：单聊一人一条，同一群共用一条；同一个人的私聊和群聊互不串上下文
 - ✅ **GUI 标题带渠道前缀**：侧栏为「企微·私聊/群」+ 第一句用户话；群聊入站去掉开头的 @机器人
 - ✅ **归档后开新会话**：在 GUI 归档该条后，下一条消息静默用 `wecom-<hash>-2` 开新会话，旧会话不再写入
-- ✅ **可选企微办公能力**：内置 `@wecom/cli`；开启后企微会话可查通讯录、文档、日程、会议、待办、微盘、邮件（须非空 `wecomCli.allowFrom`；聊天白名单 `allowFrom` 可留空）
+- ✅ **可选企微办公能力**：内置 `@wecom/cli`；开启后办公 **1:1** 通过门控工具 `wecom_cli` 查通讯录、文档、日程等（须非空 `wecomCli.allowFrom`；群聊与 GUI 看不到该工具）
 - ✅ **人设可定制**：包内中/英默认人设跟 Settings 语言；可用 profile 同目录 `persona.md` 覆盖
 - ✅ **Settings 配置卡**：凭证、白名单、超时、提示语、模型覆盖可在 GUI 填写；热字段下一轮消息生效，改凭证须重启才连 WebSocket
 - ✅ **流式动画 + 执行简报**：处理中显示阶段状态/进度条/剩余估算，完成附耗时简报
@@ -66,7 +66,7 @@ flowchart LR
 
 ## 📌 兼容的 DeepSeek Harness 版本
 
-DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。插件 0.4.0 按实际调用的 API 对齐已发布 tag（细则见 [`plugin/README.md`](./plugin/README.md)）：
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。插件 0.4.2 按实际调用的 API 对齐已发布 tag（细则见 [`plugin/README.md`](./plugin/README.md)）：
 
 | DSH | 本仓库插件 |
 |---|---|
@@ -94,7 +94,7 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 ```powershell
 # 1) 从 npm 装进目标 profile（如 web）
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.0
+# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
 
 # 2) 在 $DSH_HOME/profiles/web/cordis.patch.yml 中补密钥（其余为 bundle 默认，可按需覆盖）
 # - id: im-bridge
@@ -181,7 +181,7 @@ node bridge.js
 - 旧版 `bridge.js` 在受限沙箱内测试可能报 `spawn EPERM`，请以普通方式启动
 - 旧版每条消息起一个 agent 进程，开销较高；插件形态无此问题
 - agent 输出超过约 20KB 会截断（企微 replyStream 上限 20480 字节）
-- 可选 wecom-cli 办公能力：`wecomcli-*` 装在 `$DSH_HOME/wecom-cli-skills`，只注入办公单聊 Agent；群聊不注入；工作区残留仍会泄漏给 GUI；凭证在工作区 `.dsh/wecom-cli`（须 gitignore）、无 GUI 审批（细则见 [`plugin/README.md`](./plugin/README.md#known-limitations-and-deferred-work)）
+- 可选 wecom-cli 办公能力：`wecomcli-*` 与门控工具 `wecom_cli` 只注入办公单聊 Agent；PATH 上的 `wecom-cli` 一律拒绝；群聊不注入办公层；工作区残留的 `wecomcli-*` 仍会泄漏给 GUI；凭证在工作区 `.dsh/wecom-cli`（须 gitignore）、无 GUI 审批；企微通道禁止 `ask_user_question`（细则见 [`plugin/README.md`](./plugin/README.md#known-limitations-and-deferred-work)）
 
 ## 🔒 安全说明
 

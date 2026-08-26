@@ -23,7 +23,7 @@ One DSH session maps to one WeCom chat window, not “every window of the same u
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.0 is aligned to published tags by the APIs it actually calls:
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.2 is aligned to published tags by the APIs it actually calls:
 
 | DSH | This package |
 |---|---|
@@ -40,7 +40,7 @@ Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # Or pin a version:
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.0
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
 ```
 
 In `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile), supply credentials only (other fields ship as bundle defaults and can be overridden):
@@ -209,8 +209,8 @@ Trigger (paths relative to `workspace`):
 
 - wecom-cli credentials live in the workspace `<workspace>/.dsh/wecom-cli` (gitignore it). People on `wecomCli.allowFrom` borrow that identity’s office permissions; the chat list (root `allowFrom`) does not grant office access. An office 1:1 may still send to any `--chat-id`; the plugin does not pin recipients.
 - Gating is not a sandbox. The `wecom_cli` tool and `wecomcli-*` register only on the office 1:1 agent, PATH resolves `wecom-cli` to a refusal, and the credential directory reaches only the plugin's own spawns — but a shell in the same process can still bypass all of it: run `node <absolute path to @wecom/cli's wecom.js>`, or `npx --yes @wecom/cli` with a self-set `WECOM_CLI_CONFIG_DIR`. Without that variable such a bypass lands on the unauthorized `~/.config/wecom`. Real isolation needs a process sandbox.
-- The WeCom channel has no GUI confirmation dialog. Irreversible actions (send mail, cancel a meeting, delete a todo, overwrite a document) are constrained only by the prompt (run `--dry-run` first, wait for the next user message). `ask_user_question` hangs until the task times out on this channel.
-- Leftover `wecomcli-*` folders in workspace `.dsh/skills` / `.agents/skills` remain visible to every agent with that cwd, including GUI. Other skills are unchanged. `enabled: false` only turns off WeCom-side PATH / auth / prompt / registration.
+- The WeCom channel has no GUI confirmation dialog. Irreversible actions (send mail, cancel a meeting, delete a todo, overwrite a document) are constrained only by the prompt (run `--dry-run` first, wait for the next user message). Every WeCom session forbids `ask_user_question` (it hangs until the task times out).
+- Leftover `wecomcli-*` folders in workspace `.dsh/skills` / `.agents/skills` remain visible to every agent with that cwd, including GUI. Other skills are unchanged. `enabled: false` only turns off the deny shim, the auth check, `wecom_cli`, and wecomcli-* registration; the channel ban on `ask_user_question` is still injected.
 
 ## License
 
