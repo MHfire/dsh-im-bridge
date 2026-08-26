@@ -59,28 +59,59 @@ export interface WecomCardState extends CardShell {
   welcomeMessage: CardFieldState
   provider: CardFieldState
   model: CardFieldState
+  /** Whether the Host Connection RPC is available. */
+  skillsInstallAvailable: boolean
+  /** idle / installing / ok / error. */
+  skillsInstallStatus: 'idle' | 'installing' | 'ok' | 'error'
+  /** Destination after a successful install. */
+  skillsDest: string
+  /** Loaded wecomcli-* count after a successful install. */
+  skillsCount: number
+  /** Host error message after a failed install. */
+  skillsError: string
 }
 
 /** Face the card's slot registration injects. */
 export interface WecomCardFace extends CardActions {
+  /** Download official wecomcli-* into the Host-resolved directory. */
+  installSkills: () => void
   hooks: {
     /** Card snapshot bound by the renderer as useWecomCard. */
     wecomCard: SnapshotStore<WecomCardState>
   }
 }
 
+/** Unary RPC caller used by the install button. */
+export interface SkillsInstallRpc {
+  call(
+    channel: string,
+    endpoint: string,
+    payload: unknown,
+    signal?: AbortSignal,
+  ): Promise<
+    | { ok: true; value: unknown }
+    | { ok: false; error: { message: string } }
+  >
+}
+
 /** Bridges the `im-bridge` scope onto the staged card form. */
 export class WecomCardController {
   private readonly form: CardForm<WecomCardSettings>
   private readonly store: SnapshotStore<WecomCardState>
+  private skillsInstallStatus: WecomCardState['skillsInstallStatus'] = 'idle'
+  private skillsDest = ''
+  private skillsCount = 0
+  private skillsError = ''
 
   /**
    * @param scope - bound settings scope for the `im-bridge` namespace.
    * @param describe - Host describe face; secret literals never ride it.
+   * @param rpc - optional Connection RPC for the skills install button.
    */
   constructor(
     private readonly scope: SettingsScope<WecomCardSettings>,
     private readonly describe: SettingsDescribeFace,
+    private readonly rpc: SkillsInstallRpc | undefined,
   ) {
     this.form = new CardForm(
       scope,
@@ -115,6 +146,11 @@ export class WecomCardController {
       welcomeMessage: this.form.field('welcomeMessage'),
       provider: this.form.field('provider'),
       model: this.form.field('model'),
+      skillsInstallAvailable: this.rpc !== undefined,
+      skillsInstallStatus: this.skillsInstallStatus,
+      skillsDest: this.skillsDest,
+      skillsCount: this.skillsCount,
+      skillsError: this.skillsError,
     }
   }
 
@@ -139,8 +175,45 @@ export class WecomCardController {
     return this.secretConfigured(field)
   }
 
+  /**
+   * Download official wecomcli-* into the Host-resolved directory.
+   * The browser does not choose the path.
+   */
+  installSkills(): void {
+    void this.runInstall()
+  }
+
+  private async runInstall(): Promise<void> {
+    if (this.rpc === undefined || this.skillsInstallStatus === 'installing') return
+    this.skillsInstallStatus = 'installing'
+    this.skillsError = ''
+    this.form.notify()
+    try {
+      const result = await this.rpc.call('/im-bridge', 'wecomcli.installSkills', {})
+      if (!result.ok) {
+        this.skillsInstallStatus = 'error'
+        this.skillsError = result.error.message
+        this.form.notify()
+        return
+      }
+      const value = result.value as { dest?: unknown; count?: unknown }
+      this.skillsInstallStatus = 'ok'
+      this.skillsDest = typeof value.dest === 'string' ? value.dest : ''
+      this.skillsCount = typeof value.count === 'number' ? value.count : 0
+      this.skillsError = ''
+    } catch (error) {
+      this.skillsInstallStatus = 'error'
+      this.skillsError = error instanceof Error ? error.message : String(error)
+    }
+    this.form.notify()
+  }
+
   /** Face the slot registration injects. */
   inject(): WecomCardFace {
-    return { hooks: { wecomCard: this.store }, ...this.form.actions() }
+    return {
+      hooks: { wecomCard: this.store },
+      ...this.form.actions(),
+      installSkills: () => { this.installSkills() },
+    }
   }
 }

@@ -140,11 +140,7 @@ The plugin depends on the official [`@wecom/cli`](https://www.npmjs.com/package/
 One-time setup:
 
 1. Leave root `allowFrom` empty (everyone may ask) and put **office** userids in `wecomCli.allowFrom` (do not leave that empty)
-2. Install the official skills into `$DSH_HOME/wecom-cli-skills` (**do not use `-g`**). If `wecomcli-*` folders already sit in the workspace, move them here and delete the workspace copies:
-
-```powershell
-npx skills add WeComTeam/wecom-cli -y --dir "$env:USERPROFILE\.dsh\wecom-cli-skills"
-```
+2. In **Settings → Plugins → WeCom Bridge**, click **Install official skills** (the Host downloads the official repo zip into `$DSH_HOME/wecom-cli-skills`). **Do not** use `npx skills add -g` (it leaks into the GUI). The skills CLI has **no `--dir`**, so that flag does not write into the plugin directory. If `wecomcli-*` folders already sit in the workspace, move them here and delete the workspace copies. You can also copy official `skills/wecomcli-*` into `$DSH_HOME/wecom-cli-skills` by hand.
 
 3. Enable it in the profile `cordis.patch.yml` (the plugin then writes wecom-cli credentials from the existing `botId` / `secret` via `auth init --manual`; no QR scan and no `npm install -g @wecom/cli`):
 

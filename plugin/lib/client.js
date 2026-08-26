@@ -115,7 +115,7 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region \0dsh-css:C:\Users\user\Desktop\dsh-im-bridge\plugin\src\client\fields.module.css.mjs
-		const css = ".OMD7cq_field{flex-direction:column;gap:6px;padding:12px 0;display:flex}.OMD7cq_field+.OMD7cq_field{border-top:1px solid var(--dsw-alias-border-l2)}.OMD7cq_head{align-items:center;gap:8px;display:flex}.OMD7cq_label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:500;line-height:1.5}.OMD7cq_badges{align-items:center;gap:8px;display:inline-flex}.OMD7cq_badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.OMD7cq_badgeMuted{white-space:nowrap;color:var(--dsw-alias-label-tertiary);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px}.OMD7cq_reset{font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;padding:0;font-size:12px;line-height:1.5}.OMD7cq_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.OMD7cq_reset:disabled{cursor:default}.OMD7cq_input{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_input:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:none}.OMD7cq_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.OMD7cq_input::placeholder{color:var(--dsw-alias-label-tertiary)}.OMD7cq_inputInvalid{border:1px solid var(--dsw-alias-label-error);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_inputInvalid:focus-visible{outline:none}.OMD7cq_invalid{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.OMD7cq_hint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.5}";
+		const css = ".OMD7cq_field{flex-direction:column;gap:6px;padding:12px 0;display:flex}.OMD7cq_field+.OMD7cq_field{border-top:1px solid var(--dsw-alias-border-l2)}.OMD7cq_head{align-items:center;gap:8px;display:flex}.OMD7cq_label{min-width:0;color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:500;line-height:1.5}.OMD7cq_badges{align-items:center;gap:8px;display:inline-flex}.OMD7cq_badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.OMD7cq_badgeMuted{white-space:nowrap;color:var(--dsw-alias-label-tertiary);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px}.OMD7cq_reset{font:inherit;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;padding:0;font-size:12px;line-height:1.5}.OMD7cq_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.OMD7cq_reset:disabled{cursor:default}.OMD7cq_input{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_input:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:none}.OMD7cq_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.OMD7cq_input::placeholder{color:var(--dsw-alias-label-tertiary)}.OMD7cq_inputInvalid{border:1px solid var(--dsw-alias-label-error);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5}.OMD7cq_inputInvalid:focus-visible{outline:none}.OMD7cq_invalid{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.OMD7cq_hint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.5}.OMD7cq_install{appearance:none;font:inherit;cursor:pointer;background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3);border:1px solid #0000;border-radius:8px;align-self:flex-start;padding:5px 14px;font-size:13px;line-height:1.5}.OMD7cq_install:hover:not(:disabled){opacity:.92}.OMD7cq_install:disabled{opacity:.4;cursor:default}.OMD7cq_install:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}";
 		const tagId = "@mhfire/dsh-im-bridge/fields.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -133,6 +133,7 @@ window.__ModuleLoader__.load({
 			"hint": "OMD7cq_hint",
 			"input": "OMD7cq_input",
 			"inputInvalid": "OMD7cq_inputInvalid",
+			"install": "OMD7cq_install",
 			"invalid": "OMD7cq_invalid",
 			"label": "OMD7cq_label",
 			"reset": "OMD7cq_reset"
@@ -280,6 +281,16 @@ window.__ModuleLoader__.load({
 							props.edit("secret", text);
 						}
 					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SkillsInstall, {
+						t,
+						disabled,
+						available: state.skillsInstallAvailable,
+						status: state.skillsInstallStatus,
+						dest: state.skillsDest,
+						count: state.skillsCount,
+						error: state.skillsError,
+						onInstall: props.installSkills
+					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ValueField, {
 						id: "im-bridge-allowFrom",
 						label: t("allowFrom"),
@@ -371,6 +382,44 @@ window.__ModuleLoader__.load({
 						onReset: () => {
 							props.resetField("model");
 						}
+					})
+				]
+			});
+		}
+		function skillsStatusText(t, status, dest, count, error, available) {
+			if (!available) return t("skillsUnavailable");
+			if (status === "ok") return t("skillsInstalled").replace("{count}", String(count)).replace("{dest}", dest);
+			if (status === "error") return error === "" ? t("skillsFailed") : `${t("skillsFailed")} ${error}`;
+			return t("skillsHint");
+		}
+		/**
+		* Host-side install of official wecomcli-* (browser never chooses the path).
+		* @param props - copy, status, and the install action.
+		* @returns the labelled control.
+		*/
+		function SkillsInstall(props) {
+			const installing = props.status === "installing";
+			const status = skillsStatusText(props.t, props.status, props.dest, props.count, props.error, props.available);
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: fields_module_css_default.field,
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: fields_module_css_default.head,
+						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: fields_module_css_default.label,
+							children: props.t("skillsTitle")
+						})
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: fields_module_css_default.install,
+						disabled: props.disabled || !props.available || installing,
+						onClick: props.onInstall,
+						children: props.t(installing ? "skillsInstalling" : "skillsInstall")
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: props.status === "error" || !props.available ? fields_module_css_default.invalid : fields_module_css_default.hint,
+						children: status
 					})
 				]
 			});
@@ -579,6 +628,10 @@ window.__ModuleLoader__.load({
 				this.failed = false;
 				this.publish();
 			}
+			/** Rebuild bound projections for card-owned state outside the settings draft. */
+			notify() {
+				this.publish();
+			}
 			spec(field) {
 				const spec = this.specs.get(field);
 				if (spec === void 0) throw new Error(`im-bridge card has no field ${field}`);
@@ -612,15 +665,22 @@ window.__ModuleLoader__.load({
 		var WecomCardController = class {
 			scope;
 			describe;
+			rpc;
 			form;
 			store;
+			skillsInstallStatus = "idle";
+			skillsDest = "";
+			skillsCount = 0;
+			skillsError = "";
 			/**
 			* @param scope - bound settings scope for the `im-bridge` namespace.
 			* @param describe - Host describe face; secret literals never ride it.
+			* @param rpc - optional Connection RPC for the skills install button.
 			*/
-			constructor(scope, describe) {
+			constructor(scope, describe, rpc) {
 				this.scope = scope;
 				this.describe = describe;
+				this.rpc = rpc;
 				this.form = new CardForm(scope, [
 					csvField("allowFrom"),
 					numberField("agentTimeoutSec"),
@@ -651,7 +711,12 @@ window.__ModuleLoader__.load({
 					deniedMessage: this.form.field("deniedMessage"),
 					welcomeMessage: this.form.field("welcomeMessage"),
 					provider: this.form.field("provider"),
-					model: this.form.field("model")
+					model: this.form.field("model"),
+					skillsInstallAvailable: this.rpc !== void 0,
+					skillsInstallStatus: this.skillsInstallStatus,
+					skillsDest: this.skillsDest,
+					skillsCount: this.skillsCount,
+					skillsError: this.skillsError
 				};
 			}
 			/**
@@ -672,11 +737,45 @@ window.__ModuleLoader__.load({
 				await this.scope.set(field, text);
 				return this.secretConfigured(field);
 			}
+			/**
+			* Download official wecomcli-* into the Host-resolved directory.
+			* The browser does not choose the path.
+			*/
+			installSkills() {
+				this.runInstall();
+			}
+			async runInstall() {
+				if (this.rpc === void 0 || this.skillsInstallStatus === "installing") return;
+				this.skillsInstallStatus = "installing";
+				this.skillsError = "";
+				this.form.notify();
+				try {
+					const result = await this.rpc.call("/im-bridge", "wecomcli.installSkills", {});
+					if (!result.ok) {
+						this.skillsInstallStatus = "error";
+						this.skillsError = result.error.message;
+						this.form.notify();
+						return;
+					}
+					const value = result.value;
+					this.skillsInstallStatus = "ok";
+					this.skillsDest = typeof value.dest === "string" ? value.dest : "";
+					this.skillsCount = typeof value.count === "number" ? value.count : 0;
+					this.skillsError = "";
+				} catch (error) {
+					this.skillsInstallStatus = "error";
+					this.skillsError = error instanceof Error ? error.message : String(error);
+				}
+				this.form.notify();
+			}
 			/** Face the slot registration injects. */
 			inject() {
 				return {
 					hooks: { wecomCard: this.store },
-					...this.form.actions()
+					...this.form.actions(),
+					installSkills: () => {
+						this.installSkills();
+					}
 				};
 			}
 		};
@@ -715,7 +814,14 @@ window.__ModuleLoader__.load({
 			provider: "WeCom-only provider",
 			providerHint: "Empty follows the GUI default model. Both provider and model must be set to override.",
 			model: "WeCom-only model",
-			modelHint: "Takes effect only together with provider."
+			modelHint: "Takes effect only together with provider.",
+			skillsTitle: "WeCom office skills",
+			skillsHint: "Installs wecomcli-* into the plugin directory ($DSH_HOME/wecom-cli-skills). Do not use npx skills add -g; that CLI has no --dir. An empty Bot ID / Secret box is normal.",
+			skillsInstall: "Install official skills",
+			skillsInstalling: "Installing…",
+			skillsInstalled: "Installed {count} skills into {dest}",
+			skillsFailed: "Install failed.",
+			skillsUnavailable: "Install needs the Web host Connection."
 		};
 		/** Chinese copy for the im-bridge card. */
 		const zh = {
@@ -750,7 +856,14 @@ window.__ModuleLoader__.load({
 			provider: "企微专用 provider",
 			providerHint: "空 = 跟随 GUI 默认模型。须与 model 同时填写才覆盖。",
 			model: "企微专用 model",
-			modelHint: "仅在同时填写 provider 时生效。"
+			modelHint: "仅在同时填写 provider 时生效。",
+			skillsTitle: "企微办公 skills",
+			skillsHint: "装到程序目录 $DSH_HOME/wecom-cli-skills。不要用 npx skills add -g；CLI 没有 --dir。Bot ID / Secret 框空是正常的。",
+			skillsInstall: "安装官方 skills",
+			skillsInstalling: "正在安装…",
+			skillsInstalled: "已装 {count} 个到 {dest}",
+			skillsFailed: "安装失败。",
+			skillsUnavailable: "安装需要 Web Host 的 Connection。"
 		};
 		//#endregion
 		//#region src/client/index.ts
@@ -769,7 +882,8 @@ window.__ModuleLoader__.load({
 		* @param ctx - browser plugin context.
 		*/
 		function apply(ctx) {
-			const card = new WecomCardController(ctx.settingsScope.bind({ namespace: NS }), ctx.settingsScope.describe());
+			const connection = ctx.get("connection");
+			const card = new WecomCardController(ctx.settingsScope.bind({ namespace: NS }), ctx.settingsScope.describe(), connection?.rpc);
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en

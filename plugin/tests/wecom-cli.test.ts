@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
+import { strToU8, zipSync } from 'fflate'
 import {
   ALLOW_FROM_REQUIRED_MESSAGE,
   AUTH_INIT_FAILED_MESSAGE,
@@ -19,6 +20,8 @@ import {
   DEFAULT_WORKSPACE_SKILLS_DIR,
   ensureConfigDir,
   ensureOnPath,
+  extractWecomSkillsFromZip,
+  installOfficialWecomSkills,
   loadWecomSkills,
   manualAuthStdin,
   parseAuthStatus,
@@ -36,12 +39,25 @@ import {
   toRuntimeSkillRegistration,
   tryManualAuth,
   WECOM_CLI_CONFIG_DIR_ENV,
+  WecomSkillsInstallError,
   workspaceWecomcliLeakRoots,
   writeWecomShim,
 } from '../src/wecom-cli.ts'
 
 function scratch(label: string): string {
   return join(tmpdir(), `im-bridge-${label}-${process.pid}-${Date.now()}`)
+}
+
+function skillMarkdown(name: string): string {
+  return ['---', `name: ${name}`, 'description: x', '---', 'body'].join('\n')
+}
+
+function zipFromText(files: Record<string, string>): Uint8Array {
+  const entries: Record<string, Uint8Array> = {}
+  for (const [path, text] of Object.entries(files)) {
+    entries[path] = strToU8(text)
+  }
+  return zipSync(entries)
 }
 
 test('parseSkillMarkdown accepts kebab-case name and description', () => {
@@ -271,13 +287,108 @@ test('ensureConfigDir creates the directory and sets WECOM_CLI_CONFIG_DIR', () =
   }
 })
 
-test('skillsInstallHint names the managed skills directory and not -g', () => {
+test('skillsInstallHint names the managed skills directory and not --dir', () => {
   const dir = join('C:\\Users\\me\\.dsh', 'wecom-cli-skills')
   const hint = skillsInstallHint(dir)
-  assert.match(hint, /WeComTeam\/wecom-cli/)
-  assert.match(hint, /--dir/)
+  assert.match(hint, /Settings/)
   assert.match(hint, /wecom-cli-skills/)
-  assert.doesNotMatch(hint, /(^|\s)-g(\s|$)/)
+  assert.match(hint, /npx skills add -g/)
+  assert.match(hint, /没有 --dir/)
+})
+
+test('extractWecomSkillsFromZip writes wecomcli-* SKILL.md and leaves other folders', () => {
+  const dest = scratch('zip-ok')
+  mkdirSync(join(dest, 'keep-me'), { recursive: true })
+  writeFileSync(join(dest, 'keep-me', 'note.txt'), 'stay')
+  mkdirSync(join(dest, 'wecomcli-shared'), { recursive: true })
+  writeFileSync(join(dest, 'wecomcli-shared', 'SKILL.md'), 'old')
+  const zip = zipFromText({
+    'wecom-cli-main/README.md': 'ignore',
+    'wecom-cli-main/skills/wecomcli-shared/SKILL.md': skillMarkdown('wecomcli-shared'),
+    'wecom-cli-main/skills/wecomcli-email/SKILL.md': skillMarkdown('wecomcli-email'),
+  })
+  try {
+    const result = extractWecomSkillsFromZip(zip, dest)
+    assert.equal(result.dest, dest)
+    assert.equal(result.count, 2)
+    assert.equal(existsSync(join(dest, 'wecomcli-shared', 'SKILL.md')), true)
+    assert.match(readFileSync(join(dest, 'wecomcli-shared', 'SKILL.md'), 'utf8'), /wecomcli-shared/)
+    assert.equal(readFileSync(join(dest, 'keep-me', 'note.txt'), 'utf8'), 'stay')
+    assert.deepEqual(
+      loadWecomSkills(dest).map(skill => skill.name).sort(),
+      ['wecomcli-email', 'wecomcli-shared'],
+    )
+  } finally {
+    rmSync(dest, { recursive: true, force: true })
+  }
+})
+
+test('extractWecomSkillsFromZip skips zip directory entries under a skill', () => {
+  const dest = scratch('zip-refs')
+  mkdirSync(dest, { recursive: true })
+  const zip = zipFromText({
+    'wecom-cli-main/skills/wecomcli-calendar/SKILL.md': skillMarkdown('wecomcli-calendar'),
+    'wecom-cli-main/skills/wecomcli-calendar/references': '',
+    'wecom-cli-main/skills/wecomcli-calendar/references/': '',
+    'wecom-cli-main/skills/wecomcli-calendar/references/api.md': '# api',
+  })
+  try {
+    const result = extractWecomSkillsFromZip(zip, dest)
+    assert.equal(result.count, 1)
+    const refs = join(dest, 'wecomcli-calendar', 'references')
+    assert.equal(lstatSync(refs).isDirectory(), true)
+    assert.equal(readFileSync(join(refs, 'api.md'), 'utf8'), '# api')
+  } finally {
+    rmSync(dest, { recursive: true, force: true })
+  }
+})
+
+test('extractWecomSkillsFromZip rejects zip-slip paths and does not write outside dest', () => {
+  const dest = scratch('zip-slip')
+  mkdirSync(dest, { recursive: true })
+  const zip = zipFromText({
+    'wecom-cli-main/skills/wecomcli-shared/../../outside.txt': 'pwn',
+  })
+  try {
+    assert.throws(
+      () => extractWecomSkillsFromZip(zip, dest),
+      (error: unknown) => error instanceof WecomSkillsInstallError && /非法路径/.test(error.message),
+    )
+    assert.equal(existsSync(join(dest, '..', 'outside.txt')), false)
+    assert.equal(existsSync(join(dest, 'outside.txt')), false)
+  } finally {
+    rmSync(dest, { recursive: true, force: true })
+  }
+})
+
+test('extractWecomSkillsFromZip fails when the zip has no wecomcli-* skills', () => {
+  const dest = scratch('zip-empty')
+  mkdirSync(dest, { recursive: true })
+  const zip = zipFromText({
+    'wecom-cli-main/README.md': 'no skills',
+  })
+  try {
+    assert.throws(
+      () => extractWecomSkillsFromZip(zip, dest),
+      (error: unknown) => error instanceof WecomSkillsInstallError && /没有 wecomcli/.test(error.message),
+    )
+  } finally {
+    rmSync(dest, { recursive: true, force: true })
+  }
+})
+
+test('installOfficialWecomSkills uses a fixture zip without fetching', async () => {
+  const dest = scratch('zip-install')
+  const zip = zipFromText({
+    'wecom-cli-main/skills/wecomcli-shared/SKILL.md': skillMarkdown('wecomcli-shared'),
+  })
+  try {
+    const result = await installOfficialWecomSkills(dest, { zip })
+    assert.equal(result.count, 1)
+    assert.equal(existsSync(join(dest, 'wecomcli-shared', 'SKILL.md')), true)
+  } finally {
+    rmSync(dest, { recursive: true, force: true })
+  }
 })
 
 test('resolveWecomBinFromPackage reads the bin field', () => {

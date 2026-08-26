@@ -5,6 +5,7 @@ import type { ImBridgeLocaleKey } from './locales.ts'
 import type { WecomCardFace, WecomCardState } from './card-controller.ts'
 import { PluginCard } from './PluginCard.tsx'
 import { SecretField, ValueField } from './fields.tsx'
+import css from './fields.module.css'
 
 /** Props the slot renderer binds for this card. */
 export interface WecomCardProps {
@@ -20,6 +21,8 @@ export interface WecomCardProps {
   save: WecomCardFace['save']
   /** Drop every staged edit. */
   discard: WecomCardFace['discard']
+  /** Download official wecomcli-* into the Host-resolved directory. */
+  installSkills: WecomCardFace['installSkills']
 }
 
 /**
@@ -65,6 +68,16 @@ export function WecomCard(props: WecomCardProps): ReactElement | null {
         configured={state.secretConfigured}
         stateLabel={state.secretConfigured ? t('secretConfigured') : t('secretUnset')}
         onEdit={text => { props.edit('secret', text) }}
+      />
+      <SkillsInstall
+        t={t}
+        disabled={disabled}
+        available={state.skillsInstallAvailable}
+        status={state.skillsInstallStatus}
+        dest={state.skillsDest}
+        count={state.skillsCount}
+        error={state.skillsError}
+        onInstall={props.installSkills}
       />
       <ValueField
         id="im-bridge-allowFrom"
@@ -131,5 +144,67 @@ export function WecomCard(props: WecomCardProps): ReactElement | null {
         onReset={() => { props.resetField('model') }}
       />
     </PluginCard>
+  )
+}
+
+function skillsStatusText(
+  t: (key: ImBridgeLocaleKey) => string,
+  status: WecomCardState['skillsInstallStatus'],
+  dest: string,
+  count: number,
+  error: string,
+  available: boolean,
+): string {
+  if (!available) return t('skillsUnavailable')
+  if (status === 'ok') {
+    return t('skillsInstalled').replace('{count}', String(count)).replace('{dest}', dest)
+  }
+  if (status === 'error') {
+    return error === '' ? t('skillsFailed') : `${t('skillsFailed')} ${error}`
+  }
+  return t('skillsHint')
+}
+
+/**
+ * Host-side install of official wecomcli-* (browser never chooses the path).
+ * @param props - copy, status, and the install action.
+ * @returns the labelled control.
+ */
+function SkillsInstall(props: {
+  t: (key: ImBridgeLocaleKey) => string
+  disabled: boolean
+  available: boolean
+  status: WecomCardState['skillsInstallStatus']
+  dest: string
+  count: number
+  error: string
+  onInstall: () => void
+}): ReactElement {
+  const installing = props.status === 'installing'
+  const status = skillsStatusText(
+    props.t,
+    props.status,
+    props.dest,
+    props.count,
+    props.error,
+    props.available,
+  )
+  return (
+    <div className={css.field}>
+      <div className={css.head}>
+        <span className={css.label}>{props.t('skillsTitle')}</span>
+      </div>
+      <button
+        type="button"
+        className={css.install}
+        disabled={props.disabled || !props.available || installing}
+        onClick={props.onInstall}
+      >
+        {props.t(installing ? 'skillsInstalling' : 'skillsInstall')}
+      </button>
+      <p className={props.status === 'error' || !props.available ? css.invalid : css.hint}>
+        {status}
+      </p>
+    </div>
   )
 }

@@ -7,7 +7,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { WecomCard } from './WecomCard.tsx'
-import { WecomCardController } from './card-controller.ts'
+import { WecomCardController, type SkillsInstallRpc } from './card-controller.ts'
 import { en, zh } from './locales.ts'
 
 /** Settings namespace shared with the Host half. */
@@ -21,9 +21,11 @@ export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope
  * @param ctx - browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  const connection = ctx.get('connection') as { rpc?: SkillsInstallRpc } | undefined
   const card = new WecomCardController(
     ctx.settingsScope.bind({ namespace: NS }),
     ctx.settingsScope.describe(),
+    connection?.rpc,
   )
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'im-bridge: locale dicts')

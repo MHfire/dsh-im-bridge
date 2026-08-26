@@ -126,3 +126,31 @@
   line-height: 1.5;
   color: var(--dsw-alias-label-tertiary);
 }
+
+.install {
+  appearance: none;
+  align-self: flex-start;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-3);
+}
+
+.install:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.install:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.install:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}

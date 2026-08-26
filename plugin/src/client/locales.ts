@@ -32,6 +32,13 @@ export type ImBridgeLocaleKey =
   | 'providerHint'
   | 'model'
   | 'modelHint'
+  | 'skillsTitle'
+  | 'skillsHint'
+  | 'skillsInstall'
+  | 'skillsInstalling'
+  | 'skillsInstalled'
+  | 'skillsFailed'
+  | 'skillsUnavailable'
 
 /** English copy for the im-bridge card. */
 export const en: Record<ImBridgeLocaleKey, string> = {
@@ -67,6 +74,13 @@ export const en: Record<ImBridgeLocaleKey, string> = {
   providerHint: 'Empty follows the GUI default model. Both provider and model must be set to override.',
   model: 'WeCom-only model',
   modelHint: 'Takes effect only together with provider.',
+  skillsTitle: 'WeCom office skills',
+  skillsHint: 'Installs wecomcli-* into the plugin directory ($DSH_HOME/wecom-cli-skills). Do not use npx skills add -g; that CLI has no --dir. An empty Bot ID / Secret box is normal.',
+  skillsInstall: 'Install official skills',
+  skillsInstalling: 'Installing…',
+  skillsInstalled: 'Installed {count} skills into {dest}',
+  skillsFailed: 'Install failed.',
+  skillsUnavailable: 'Install needs the Web host Connection.',
 }
 
 /** Chinese copy for the im-bridge card. */
@@ -103,6 +117,13 @@ export const zh: Record<ImBridgeLocaleKey, string> = {
   providerHint: '空 = 跟随 GUI 默认模型。须与 model 同时填写才覆盖。',
   model: '企微专用 model',
   modelHint: '仅在同时填写 provider 时生效。',
+  skillsTitle: '企微办公 skills',
+  skillsHint: '装到程序目录 $DSH_HOME/wecom-cli-skills。不要用 npx skills add -g；CLI 没有 --dir。Bot ID / Secret 框空是正常的。',
+  skillsInstall: '安装官方 skills',
+  skillsInstalling: '正在安装…',
+  skillsInstalled: '已装 {count} 个到 {dest}',
+  skillsFailed: '安装失败。',
+  skillsUnavailable: '安装需要 Web Host 的 Connection。',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

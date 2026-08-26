@@ -260,6 +260,11 @@ export class CardForm<T> {
     this.publish()
   }
 
+  /** Rebuild bound projections for card-owned state outside the settings draft. */
+  notify(): void {
+    this.publish()
+  }
+
   private spec(field: string): CardFieldSpec {
     const spec = this.specs.get(field)
     if (spec === undefined) throw new Error(`im-bridge card has no field ${field}`)

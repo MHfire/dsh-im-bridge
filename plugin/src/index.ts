@@ -34,6 +34,9 @@ import {
 import {
   ALLOW_FROM_REQUIRED_MESSAGE,
   AUTH_INIT_HINT,
+  IM_BRIDGE_RPC_CHANNEL,
+  INSTALL_SKILLS_ENDPOINT,
+  SKILLS_RPC_UNAVAILABLE_MESSAGE,
   WECOM_CLI_NO_OFFICE_PROMPT,
   WECOM_CLI_PROMPT,
   WORKSPACE_WECOMCLI_LEAK_MESSAGE,
@@ -41,6 +44,7 @@ import {
   countWorkspaceWecomcliLeaks,
   ensureConfigDir,
   ensureOnPath,
+  installOfficialWecomSkills,
   loadWecomSkills,
   probeAuth,
   registerWecomOfficeSkills,
@@ -52,6 +56,8 @@ import {
   shouldInjectWecomOfficeSkills,
   skillsInstallHint,
   tryManualAuth,
+  type InstallWecomSkillsResult,
+  type WecomSkill,
 } from './wecom-cli.ts'
 import {
   DEFAULT_THINKING,
@@ -235,6 +241,20 @@ function emptyChatState(): ChatState {
     modelStreamPhase: 'idle',
     streamStatusTick: 0,
   }
+}
+
+/** Duck-typed Connection RPC result (no apiproxy import). */
+type SkillsRpcResult =
+  | { ok: true; value: InstallWecomSkillsResult }
+  | { ok: false; error: { code: 'internal' | 'cancelled'; message: string; details: Record<string, never> } }
+
+/** Optional Host Connection used by the Settings install button. */
+interface HostConnectionRpc {
+  handle(
+    channel: string,
+    handler: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<SkillsRpcResult>,
+    options: { authority: 'loopback' },
+  ): () => Promise<void>
 }
 
 interface DefaultModel {
@@ -475,6 +495,55 @@ export function apply(ctx: Context, config: Config): void {
   })
   const cfg = (): Config => source()
 
+  const chats = new Map<string, ChatState>()
+  let wecomCliReady = false
+  let officeSkills: WecomSkill[] = []
+
+  ctx.inject(['connection'], (bound) => {
+    const rpc = (bound.get('connection') as { rpc?: HostConnectionRpc } | undefined)?.rpc
+    if (rpc === undefined) {
+      console.warn(`[im-bridge] ${SKILLS_RPC_UNAVAILABLE_MESSAGE}`)
+      return
+    }
+    bound.effect(
+      () => rpc.handle(IM_BRIDGE_RPC_CHANNEL, async (endpoint, _payload, signal) => {
+        if (endpoint !== INSTALL_SKILLS_ENDPOINT) {
+          return {
+            ok: false,
+            error: { code: 'internal', message: `unknown endpoint ${endpoint}`, details: {} },
+          }
+        }
+        if (signal.aborted) {
+          return {
+            ok: false,
+            error: { code: 'cancelled', message: '安装已取消', details: {} },
+          }
+        }
+        try {
+          const dest = resolveSkillsDir(cfg().wecomCli.skillsDir, cfg().workspace)
+          const result = await installOfficialWecomSkills(dest, { signal })
+          officeSkills = loadWecomSkills(result.dest).filter(skill => skill.name.startsWith('wecomcli-'))
+          for (const st of chats.values()) {
+            if (st.agent === undefined) continue
+            if (!shouldInjectWecomOfficeSkills(st.kind, st.office)) continue
+            if (st.officeSkillsRegistered) continue
+            const count = registerWecomOfficeSkills(st.agent.ctx, officeSkills)
+            if (count > 0) {
+              st.officeSkillsRegistered = true
+              console.log(`[im-bridge] 安装后补注册 ${String(count)} 个 wecomcli-*`)
+            }
+          }
+          console.log(`[im-bridge] 已安装 ${String(result.count)} 个 wecomcli-* 到 ${result.dest}`)
+          return { ok: true, value: result }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          return { ok: false, error: { code: 'internal', message, details: {} } }
+        }
+      }, { authority: 'loopback' }),
+      'im-bridge: wecomcli.installSkills',
+    )
+  })
+
   void (async () => {
     const loader = ctx.get('loader') as LoaderTree | undefined
     await loader?.await()
@@ -486,9 +555,6 @@ export function apply(ctx: Context, config: Config): void {
       return
     }
 
-    const chats = new Map<string, ChatState>()
-    let wecomCliReady = false
-    let officeSkills: ReturnType<typeof loadWecomSkills> = []
     const wecomCli = cfg().wecomCli
     if (wecomCli.enabled) {
       const skillsDir = resolveSkillsDir(wecomCli.skillsDir, cfg().workspace)
@@ -496,7 +562,7 @@ export function apply(ctx: Context, config: Config): void {
       const wecomcliCount = countWecomcliSkills(officeSkills)
       if (wecomcliCount === 0) {
         console.warn(
-          `[im-bridge] 未找到 wecomcli-* skills（${skillsDir}）。安装：${skillsInstallHint(skillsDir)}（不要用 -g）`,
+          `[im-bridge] 未找到 wecomcli-* skills（${skillsDir}）。${skillsInstallHint(skillsDir)}`,
         )
       } else {
         console.log(
@@ -657,7 +723,7 @@ export function apply(ctx: Context, config: Config): void {
         && shouldInjectWecomOfficeSkills(st.kind, st.office)
       ) {
         const count = registerWecomOfficeSkills(agentCtx, officeSkills)
-        st.officeSkillsRegistered = true
+        st.officeSkillsRegistered = count > 0
         console.log(`[im-bridge] 已在该 Agent 注册 ${String(count)} 个 wecomcli-*`)
       }
     }

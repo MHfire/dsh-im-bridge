@@ -163,6 +163,7 @@ export function planWecomBind(key: string, state: WecomBindState): WecomBindPlan
     if (state.stored.has(sessionId)) return { sessionId, bind: 'resume', epoch }
     return { sessionId, bind: 'create', epoch }
   }
+  
   throw new Error(`im-bridge: no free session epoch for ${key} within ${String(limit)} candidates`)
 }
 

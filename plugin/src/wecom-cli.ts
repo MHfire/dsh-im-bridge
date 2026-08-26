@@ -4,11 +4,20 @@
  */
 
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, chmodSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  chmodSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
+import { unzipSync } from 'fflate'
 import { parse as parseYaml } from 'yaml'
 
 const execFileAsync = promisify(execFile)
@@ -60,6 +69,38 @@ export const SKILLS_SERVICE_MISSING_MESSAGE =
 /** Logged when workspace scan roots still contain wecomcli-*. */
 export const WORKSPACE_WECOMCLI_LEAK_MESSAGE =
   '工作区 .dsh/skills 或 .agents/skills 仍有 wecomcli-*，同 cwd 的 GUI/群聊仍会发现。请挪到 $DSH_HOME/wecom-cli-skills 后删除工作区副本。'
+
+/** Official GitHub zip of wecom-cli (skills live under `skills/wecomcli-*`). */
+export const WECOM_CLI_SKILLS_ARCHIVE_URL =
+  'https://github.com/WeComTeam/wecom-cli/archive/refs/heads/main.zip'
+
+/** Connection channel for the Settings install button. */
+export const IM_BRIDGE_RPC_CHANNEL = '/im-bridge'
+
+/** Unary endpoint that downloads and extracts official wecomcli-* skills. */
+export const INSTALL_SKILLS_ENDPOINT = 'wecomcli.installSkills'
+
+/** Logged when the Host has no Connection (no Settings install button). */
+export const SKILLS_RPC_UNAVAILABLE_MESSAGE =
+  '当前 Host 没有 Connection，Settings 安装按钮不可用。'
+
+/** Zip entry under the GitHub archive: `wecom-cli-<ref>/skills/wecomcli-<name>/...`. */
+const ARCHIVE_SKILL_FILE =
+  /^wecom-cli-[^/]+\/skills\/(wecomcli-[a-z0-9]+(?:-[a-z0-9]+)*)\/(.+)$/
+
+/**
+ * GitHub zips list directories as empty entries. Writing those as files makes
+ * a later mkdir of the same path fail with EEXIST.
+ * @param name - zip path with `/` separators.
+ * @param data - entry bytes.
+ * @returns true when this entry must not be written as a file.
+ */
+function isZipDirectoryEntry(name: string, data: Uint8Array): boolean {
+  if (name.endsWith('/')) return true
+  if (data.byteLength > 0) return false
+  const last = name.split('/').filter(Boolean).at(-1) ?? ''
+  return !last.includes('.')
+}
 
 /** Extra system-prompt rules for the WeCom channel (no GUI confirm dialog). */
 export const WECOM_CLI_PROMPT = [
@@ -121,6 +162,25 @@ export interface EnsureOnPathResult {
 /** `wecom-cli auth show --status` outcome. */
 export type AuthStatus = 'authorized' | 'unauthorized' | 'error'
 
+/** Result of writing official wecomcli-* into the managed skills directory. */
+export interface InstallWecomSkillsResult {
+  /** Absolute destination directory. */
+  dest: string
+  /** How many wecomcli-* SKILL.md trees loaded after extract. */
+  count: number
+}
+
+/** Failed download or extract; message is safe to show in Settings. */
+export class WecomSkillsInstallError extends Error {
+  /**
+   * @param message - short reason with no secrets.
+   */
+  constructor(message: string) {
+    super(message)
+    this.name = 'WecomSkillsInstallError'
+  }
+}
+
 /**
  * DSH home: `$DSH_HOME`, else `~/.dsh`.
  * @param env - environment to read; defaults to `process.env`.
@@ -175,12 +235,108 @@ export function ensureConfigDir(dir: string, env: NodeJS.ProcessEnv = process.en
 }
 
 /**
- * One-line command that installs official skills into `dir` (not `-g`).
+ * How to land official skills in `dir`. The skills CLI has no `--dir` and `-g`
+ * leaks into `~/.agents/skills`.
  * @param dir - destination skills directory.
- * @returns a copy-pasteable install command.
+ * @returns a one-line install hint.
  */
 export function skillsInstallHint(dir: string): string {
-  return `npx skills add WeComTeam/wecom-cli -y --dir "${dir}"`
+  return `在 Settings → 插件配置 → 企业微信桥接 点「安装官方 skills」，或把官方仓库 skills/wecomcli-* 拷到 "${dir}"（不要 npx skills add -g；CLI 没有 --dir）`
+}
+
+/**
+ * Download the official wecom-cli GitHub zip.
+ * @param fetchImpl - HTTP client; defaults to global `fetch`.
+ * @param signal - optional cancellation.
+ * @returns zip bytes.
+ */
+export async function fetchWecomSkillsZip(
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  let response: Response
+  try {
+    response = await fetchImpl(WECOM_CLI_SKILLS_ARCHIVE_URL, { signal, redirect: 'follow' })
+  } catch {
+    throw new WecomSkillsInstallError('下载官方 skills 失败（网络）')
+  }
+  if (!response.ok) {
+    throw new WecomSkillsInstallError(`下载官方 skills 失败（HTTP ${String(response.status)}）`)
+  }
+  return new Uint8Array(await response.arrayBuffer())
+}
+
+/**
+ * Extract `skills/wecomcli-*` from a GitHub archive zip into `dest`.
+ * Rejects entries whose path contains `..`. Overwrites matching skill folders
+ * and leaves other children of `dest` in place.
+ * @param zipBytes - GitHub `archive/refs/heads/main.zip` body.
+ * @param dest - managed skills root (`resolveSkillsDir`).
+ * @returns destination and loaded wecomcli-* count.
+ */
+export function extractWecomSkillsFromZip(zipBytes: Uint8Array, dest: string): InstallWecomSkillsResult {
+  if (zipBytes.byteLength === 0) {
+    throw new WecomSkillsInstallError('下载的 zip 为空')
+  }
+  let files: Record<string, Uint8Array>
+  try {
+    files = unzipSync(zipBytes)
+  } catch {
+    throw new WecomSkillsInstallError('无法解压官方 skills zip')
+  }
+  const writes: Array<{ skill: string; rel: string; data: Uint8Array }> = []
+  for (const [rawName, data] of Object.entries(files)) {
+    const name = rawName.replaceAll('\\', '/')
+    if (name.split('/').includes('..')) {
+      throw new WecomSkillsInstallError('zip 含非法路径')
+    }
+    if (isZipDirectoryEntry(name, data)) continue
+    const match = ARCHIVE_SKILL_FILE.exec(name)
+    if (match === null || match[1] === undefined || match[2] === undefined) continue
+    writes.push({ skill: match[1], rel: match[2], data })
+  }
+  if (writes.length === 0) {
+    throw new WecomSkillsInstallError('zip 中没有 wecomcli-* skills')
+  }
+  writes.sort((left, right) => left.rel.split('/').length - right.rel.split('/').length)
+  mkdirSync(dest, { recursive: true })
+  const destRoot = resolve(dest)
+  for (const skill of new Set(writes.map(entry => entry.skill))) {
+    const skillDir = join(destRoot, skill)
+    if (existsSync(skillDir)) rmSync(skillDir, { recursive: true, force: true })
+  }
+  for (const entry of writes) {
+    const target = resolve(destRoot, entry.skill, entry.rel)
+    const relToDest = relative(destRoot, target)
+    if (relToDest.startsWith('..') || isAbsolute(relToDest)) {
+      throw new WecomSkillsInstallError('zip 含非法路径')
+    }
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, entry.data)
+  }
+  const count = countWecomcliSkills(loadWecomSkills(destRoot))
+  if (count === 0) {
+    throw new WecomSkillsInstallError('解压后未读到 wecomcli-* SKILL.md')
+  }
+  return { dest: destRoot, count }
+}
+
+/**
+ * Install official wecomcli-* into `dest`. Tests pass `zip`; production fetches.
+ * @param dest - managed skills root.
+ * @param options - fixture zip, fetch override, or cancellation.
+ * @returns destination and loaded count.
+ */
+export async function installOfficialWecomSkills(
+  dest: string,
+  options?: {
+    zip?: Uint8Array
+    fetch?: typeof fetch
+    signal?: AbortSignal
+  },
+): Promise<InstallWecomSkillsResult> {
+  const zip = options?.zip ?? await fetchWecomSkillsZip(options?.fetch, options?.signal)
+  return extractWecomSkillsFromZip(zip, dest)
 }
 
 /**
