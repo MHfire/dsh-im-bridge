@@ -8,6 +8,7 @@ const HOST_EXTERNAL = [
   '@deepseek-ai/dsh-agent',
   '@deepseek-ai/dsh-settings',
   '@wecom/aibot-node-sdk',
+  '@wecom/cli',
 ]
 
 const isExternal = (specifier: string): boolean =>

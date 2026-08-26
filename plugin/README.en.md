@@ -14,7 +14,7 @@ One DSH session maps to one WeCom chat window, not “every window of the same u
 
 - **1:1**: `single:<userid>` — one Agent for that user
 - **Group**: `group:<chatid>` — all members share one Agent and one serial queue (two people speaking at once still cannot concurrent-`followup`)
-- `allowFrom` still filters by **sender** userid; rejected senders are not enqueued
+- `allowFrom` filters **who may chat** by sender userid; empty = enqueue everyone. Office commands use `wecomCli.allowFrom` separately
 - Leading `@nickname` mentions are stripped on arrival, so both the model input and the title read `测试一下` instead of `@MediaAgent 测试一下`. Mentions later in the text stay, and a message that is nothing but mentions goes to the model unchanged
 - Process restart continues the same durable session via a stable `wecom-` + short hash of the key: adopt a live Agent if the process already has one (for example the browser already opened that row), `resume` from persistence otherwise, and `create` only when neither exists. Resume cwd / preset follow the archive, not the current config; a cwd mismatch logs a warning and is not rewritten.
 - The GUI title is `企微·私聊` / `企微·群` plus the first user prompt (the same automatic title as other sessions), not a userid / chatid; two windows of the same kind with similar first lines stay two sidebar rows
@@ -23,7 +23,7 @@ One DSH session maps to one WeCom chat window, not “every window of the same u
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.3.0 is aligned to published tags by the APIs it actually calls:
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.0 is aligned to published tags by the APIs it actually calls:
 
 | DSH | This package |
 |---|---|
@@ -40,7 +40,7 @@ Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # Or pin a version:
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.3.0
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.0
 ```
 
 In `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile), supply credentials only (other fields ship as bundle defaults and can be overridden):
@@ -81,7 +81,7 @@ Fields, top to bottom:
 | Welcome message | `welcomeMessage` | Applies on the next message |
 | WeCom-only provider / model | `provider` / `model` | Applies only to **later new** WeCom-window sessions; both must be set to override, otherwise the GUI default model is used |
 
-`workspace`, `agentPreset`, `persona` / `personaFile`, `thinking`, `maxReplyBytes`, and `reasoningEffort` are not on the card; set them in the profile patch or the table below. This release does not hot-reconnect credentials.
+`workspace`, `agentPreset`, `persona` / `personaFile`, `thinking`, `maxReplyBytes`, `reasoningEffort`, and `wecomCli` are not on the card; set them in the profile patch or the table below. This release does not hot-reconnect credentials; changing `wecomCli` also requires a process restart.
 
 ## Configuration
 
@@ -91,7 +91,7 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 |---|---|
 | `botId` / `secret` | WeCom AI Bot credentials (`role('secret')`, redacted in UI); when empty, WeCom side is skipped and the host keeps running |
 | `workspace` | Agent working directory (session cwd) |
-| `allowFrom` | Allowed sender userids; empty = allow everyone |
+| `allowFrom` | Chat allow-list; empty = everyone may ask. Does not gate wecom-cli |
 | `agentTimeoutSec` | Max seconds per task; also drives progress / ETA |
 | `startHint` | Placeholder text when processing starts |
 | `agentPreset` | Agent preset to mount (default `standard`) |
@@ -101,6 +101,7 @@ The bundle `cordis.patch.yml` supplies defaults for every field except `botId` /
 | `maxReplyBytes` | Reply size cap in bytes (default 20000) |
 | `deniedMessage` | Reply when the sender is not on `allowFrom` (editable in Settings) |
 | `welcomeMessage` | Welcome text on `enter_chat` (editable in Settings) |
+| `wecomCli` | Optional WeCom office skills (off by default). See the next section |
 | `thinking` | Streaming animation. Precedence: tool activity (`toolLabels`) > model stream phase (`reasoningStatus` / `outputStatus` from `assistant/chunk`) > timed `phases` fallback; also `spin` / `reasoningSpin` / `outputSpin` / `eggs` |
 
 To give WeCom a different model from the GUI, set both in the profile `cordis.patch.yml`:
@@ -129,6 +130,43 @@ thinking:
   toolLabels:
     pwsh: PowerShell
 ```
+
+## WeCom office skills (wecom-cli)
+
+The plugin depends on the official [`@wecom/cli`](https://www.npmjs.com/package/@wecom/cli) binary. Install `wecomcli-*` under **`$DSH_HOME/wecom-cli-skills`** (not workspace `.dsh/skills` / `.agents/skills`, and not `$DSH_HOME/skills`). The plugin `skills.register()`s that catalog only on the **office userid’s 1:1** agent; group chats that share an agent do not get it in this build. Other workspace skills stay on `skill-filesystem`. The model runs `wecom-cli` through the preset’s existing `pwsh` / `bash` tool; this plugin does not register a separate tool.
+
+`wecomCli.enabled` is off by default. Turning PATH on requires a non-empty **`wecomCli.allowFrom`** (office userids). Root `allowFrom` only gates who may chat; empty means everyone may ask. An empty office list logs a warning and skips PATH / auth.
+
+One-time setup:
+
+1. Leave root `allowFrom` empty (everyone may ask) and put **office** userids in `wecomCli.allowFrom` (do not leave that empty)
+2. Install the official skills into `$DSH_HOME/wecom-cli-skills` (**do not use `-g`**). If `wecomcli-*` folders already sit in the workspace, move them here and delete the workspace copies:
+
+```powershell
+npx skills add WeComTeam/wecom-cli -y --dir "$env:USERPROFILE\.dsh\wecom-cli-skills"
+```
+
+3. Enable it in the profile `cordis.patch.yml` (the plugin then writes wecom-cli credentials from the existing `botId` / `secret` via `auth init --manual`; no QR scan and no `npm install -g @wecom/cli`):
+
+```yaml
+- id: im-bridge
+  config:
+    allowFrom: []
+    wecomCli:
+      enabled: true
+      allowFrom: ["<office userid>"]
+      # skillsDir: ''   # empty = $DSH_HOME/wecom-cli-skills
+      # configDir: ''   # empty = <workspace>/.dsh/wecom-cli; gitignore this directory
+```
+
+| Field | Description |
+|---|---|
+| `wecomCli.enabled` | Wire PATH / auth / prompt for WeCom agents; default `false` |
+| `wecomCli.allowFrom` | Userids allowed to run wecom-cli; empty skips PATH / auth. Independent of the chat list |
+| `wecomCli.skillsDir` | Override skills root; empty = `$DSH_HOME/wecom-cli-skills` |
+| `wecomCli.configDir` | Override the credential directory (`WECOM_CLI_CONFIG_DIR`); empty = `<workspace>/.dsh/wecom-cli`. Gitignore that directory. Once enabled, `~/.config/wecom` is unused. |
+
+Changing `wecomCli` requires a process restart. Messages still arrive when unauthorized; if automatic credential seeding fails, the log tells you to run `npx --yes @wecom/cli auth init --manual` on the host (the same Bot ID / Secret; do not install globally). Credentials live in workspace `.dsh/wecom-cli/` (gitignore it), not `~/.config/wecom`. Do not run `auth init --noninteractive` from the agent (that creates a new bot).
 
 ## Persona
 
@@ -166,8 +204,14 @@ Trigger (paths relative to `workspace`):
 
 ## Security
 
-- Do not commit secret-bearing files such as `config.json` / `persona.md`
+- Do not commit secret-bearing files such as `config.json` / `persona.md` / `.dsh/wecom-cli/`
 - Session and tool output may contain adversarial text; the plugin’s safety prompt tells the agent not to treat tool output as instructions
+
+## Known Limitations and Deferred Work
+
+- wecom-cli credentials live in the workspace `<workspace>/.dsh/wecom-cli` (`WECOM_CLI_CONFIG_DIR`; gitignore it). Once enabled, `~/.config/wecom` is unused. People on `wecomCli.allowFrom` borrow that identity’s office permissions; the chat list (root `allowFrom`) does not grant office access. PATH stays process-wide and does not stop `pwsh wecom-cli`. The office catalog is registered only on the office 1:1 agent; group chats do not get it. This is not a sandbox.
+- The WeCom channel has no GUI confirmation dialog. Irreversible actions (send mail, cancel a meeting, delete a todo, overwrite a document) are constrained only by the prompt (run `--dry-run` first, wait for the next user message). `ask_user_question` hangs until the task times out on this channel.
+- Leftover `wecomcli-*` folders in workspace `.dsh/skills` / `.agents/skills` remain visible to every agent with that cwd, including GUI. Other skills are unchanged. `enabled: false` only turns off WeCom-side PATH / auth / prompt / registration.
 
 ## License
 

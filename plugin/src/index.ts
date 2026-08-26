@@ -32,6 +32,28 @@ import {
   type WecomSessionRef,
 } from './session-key.ts'
 import {
+  ALLOW_FROM_REQUIRED_MESSAGE,
+  AUTH_INIT_HINT,
+  WECOM_CLI_NO_OFFICE_PROMPT,
+  WECOM_CLI_PROMPT,
+  WORKSPACE_WECOMCLI_LEAK_MESSAGE,
+  countWecomcliSkills,
+  countWorkspaceWecomcliLeaks,
+  ensureConfigDir,
+  ensureOnPath,
+  loadWecomSkills,
+  probeAuth,
+  registerWecomOfficeSkills,
+  resolveConfigDir,
+  resolveSkillsDir,
+  resolveWecomBin,
+  senderHasOfficeAccess,
+  shouldEnableWecomCli,
+  shouldInjectWecomOfficeSkills,
+  skillsInstallHint,
+  tryManualAuth,
+} from './wecom-cli.ts'
+import {
   DEFAULT_THINKING,
   footerOf,
   fmtDuration,
@@ -81,6 +103,25 @@ const ThinkingSchema = z.object({
   outputSpin: z.array(String).default(DEFAULT_THINKING.outputSpin),
 })
 
+const WecomCliSchema = z.object({
+  enabled: z.boolean().default(false),
+  skillsDir: z.string().default(''),
+  configDir: z.string().default(''),
+  allowFrom: z.array(String).default([]),
+})
+
+/** Optional wecom-cli office skills (mail, calendar, docs, …). */
+export interface WecomCliConfig {
+  /** Explicit opt-in; off by default because it shares the authorized identity. */
+  enabled: boolean
+  /** Skills root; empty = `$DSH_HOME/wecom-cli-skills`. */
+  skillsDir: string
+  /** Credential directory; empty = `<workspace>/.dsh/wecom-cli`. */
+  configDir: string
+  /** Office-command userid list; empty skips PATH / auth. Independent of chat `allowFrom`. */
+  allowFrom: string[]
+}
+
 /** Plugin config: secrets come from the profile patch or Settings. */
 export interface Config {
   botId: string
@@ -99,6 +140,7 @@ export interface Config {
   thinking: ThinkingConfig
   deniedMessage: string
   welcomeMessage: string
+  wecomCli: WecomCliConfig
 }
 
 /** Schemastery schema for the composition entry and settings namespace. */
@@ -119,6 +161,7 @@ export const Config: z<Config> = z.object({
   thinking: ThinkingSchema.default(DEFAULT_THINKING),
   deniedMessage: z.string().default('无权访问本服务'),
   welcomeMessage: z.string().default('👋 办公助手已就绪。直接发消息即可，例如查文件、整理文档、查资料或处理日常事务。'),
+  wecomCli: WecomCliSchema.default({ enabled: false, skillsDir: '', configDir: '', allowFrom: [] }),
 })
 
 interface LoggedEvent {
@@ -153,6 +196,7 @@ interface ChunkData {
 interface LiveAgent {
   whenIdle(): Promise<void>
   followup(message: unknown): void
+  ctx: Context
   session: {
     seq: number
     events: readonly LoggedEvent[]
@@ -164,6 +208,12 @@ interface ChatState {
   agent?: LiveAgent
   sessionId?: string
   kind?: 'single' | 'group'
+  /** True when the current inbound sender is on `wecomCli.allowFrom`. */
+  office: boolean
+  /** Prompt sections already registered on this Agent. */
+  wecomPromptInstalled: boolean
+  /** wecomcli-* already registered on this Agent. */
+  officeSkillsRegistered: boolean
   queue: Promise<unknown>
   lastActivity: string
   activityClearAt: number
@@ -175,6 +225,9 @@ interface ChatState {
 /** Placeholder Map value so later messages on the same key share one queue. */
 function emptyChatState(): ChatState {
   return {
+    office: false,
+    wecomPromptInstalled: false,
+    officeSkillsRegistered: false,
     queue: Promise.resolve(),
     lastActivity: '',
     activityClearAt: 0,
@@ -250,6 +303,16 @@ interface SessionTitleEventData {
 interface AgentPresets {
   resolve(id: string): Promise<{ id: string }>
   mount(agentCtx: Context, id: string): Promise<unknown>
+}
+
+interface SystemPromptService {
+  section(entry: { name: string; order: number; text: () => string }): unknown
+}
+
+/** Caller-bound prompt registry on an Agent context (not a raw `get()` result). */
+interface PromptHost {
+  get(name: string): unknown
+  systemPrompt?: SystemPromptService
 }
 
 interface SettingsReader {
@@ -424,6 +487,60 @@ export function apply(ctx: Context, config: Config): void {
     }
 
     const chats = new Map<string, ChatState>()
+    let wecomCliReady = false
+    let officeSkills: ReturnType<typeof loadWecomSkills> = []
+    const wecomCli = cfg().wecomCli
+    if (wecomCli.enabled) {
+      const skillsDir = resolveSkillsDir(wecomCli.skillsDir, cfg().workspace)
+      officeSkills = loadWecomSkills(skillsDir).filter(skill => skill.name.startsWith('wecomcli-'))
+      const wecomcliCount = countWecomcliSkills(officeSkills)
+      if (wecomcliCount === 0) {
+        console.warn(
+          `[im-bridge] 未找到 wecomcli-* skills（${skillsDir}）。安装：${skillsInstallHint(skillsDir)}（不要用 -g）`,
+        )
+      } else {
+        console.log(
+          `[im-bridge] 已从 ${skillsDir} 加载 ${String(wecomcliCount)} 个 wecomcli-*，将在办公单聊 Agent 上注册`,
+        )
+      }
+      const leakCount = countWorkspaceWecomcliLeaks(cfg().workspace)
+      if (leakCount > 0) {
+        console.warn(`[im-bridge] ${WORKSPACE_WECOMCLI_LEAK_MESSAGE}（${String(leakCount)}）`)
+      }
+      if (!shouldEnableWecomCli(true, wecomCli.allowFrom)) {
+        console.warn(`[im-bridge] ${ALLOW_FROM_REQUIRED_MESSAGE}`)
+      } else {
+        wecomCliReady = true
+        const binJs = resolveWecomBin()
+        if (binJs === undefined) {
+          console.warn('[im-bridge] 未找到 @wecom/cli 二进制，办公命令不可用。请确认插件依赖已安装。')
+        } else {
+          const configDir = ensureConfigDir(resolveConfigDir(wecomCli.configDir, cfg().workspace))
+          console.log(`[im-bridge] wecom-cli 凭证目录: ${configDir}`)
+          const pathResult = ensureOnPath(binJs)
+          if (pathResult.alreadyOnPath) {
+            console.log('[im-bridge] PATH 上已有 wecom-cli')
+          } else if (pathResult.shimDir !== undefined) {
+            console.log(`[im-bridge] 已把 wecom-cli shim 加入 PATH: ${pathResult.shimDir}`)
+          }
+          let status = await probeAuth(binJs)
+          if (status === 'unauthorized') {
+            if ((await tryManualAuth(binJs, cfg().botId, cfg().secret)) === undefined) {
+              status = await probeAuth(binJs)
+            }
+          }
+          if (status === 'authorized') {
+            console.log('[im-bridge] wecom-cli 已授权')
+          } else if (status === 'unauthorized') {
+            console.warn(
+              `[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`,
+            )
+          } else {
+            console.warn('[im-bridge] wecom-cli auth show 失败。')
+          }
+        }
+      }
+    }
 
     /**
      * Add the channel prefix to a title the Host generated. `session/event`
@@ -494,6 +611,57 @@ export function apply(ctx: Context, config: Config): void {
       }
     }
 
+    /**
+     * Register persona + wecom prompt on this Agent's layer, synchronously.
+     * Must use `agentCtx.systemPrompt` (caller-bound). `inject()` without await
+     * yields a microtask and can publish the Agent before the section exists;
+     * `adopt` never re-runs setup.
+     */
+    function installWecomChannel(agentCtx: Context, st: ChatState): void {
+      if (st.wecomPromptInstalled) return
+      const host = agentCtx as Context & PromptHost
+      if (host.get('systemPrompt') === undefined || host.systemPrompt === undefined) {
+        console.warn('[im-bridge] 当前 Agent 没有 systemPrompt，企微提示词未注入')
+        return
+      }
+      const prompt = host.systemPrompt
+      try {
+        prompt.section({
+          name: 'deployment:persona',
+          order: 0,
+          text: () => resolvePersona(cfg(), settings),
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn(`[im-bridge] 人设段未覆盖（可能已由 preset 注册）: ${message}`)
+      }
+      if (wecomCliReady) {
+        try {
+          prompt.section({
+            name: 'channel:wecom-cli',
+            order: 1,
+            text: () => st.office ? WECOM_CLI_PROMPT : WECOM_CLI_NO_OFFICE_PROMPT,
+          })
+          console.log(
+            `[im-bridge] 已注入企微提示词 office=${String(st.office)} kind=${st.kind ?? '?'}`,
+          )
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error(`[im-bridge] 注入企微提示词失败: ${message}`)
+        }
+      }
+      st.wecomPromptInstalled = true
+      if (
+        wecomCliReady
+        && !st.officeSkillsRegistered
+        && shouldInjectWecomOfficeSkills(st.kind, st.office)
+      ) {
+        const count = registerWecomOfficeSkills(agentCtx, officeSkills)
+        st.officeSkillsRegistered = true
+        console.log(`[im-bridge] 已在该 Agent 注册 ${String(count)} 个 wecomcli-*`)
+      }
+    }
+
     async function ensureAgent(ref: WecomSessionRef): Promise<ChatState> {
       let st = chats.get(ref.key)
       if (st === undefined) {
@@ -506,6 +674,8 @@ export function apply(ctx: Context, config: Config): void {
         console.log(`[im-bridge] 会话 ${st.sessionId} 已归档，改开新会话`)
         st.agent = undefined
         st.sessionId = undefined
+        st.wecomPromptInstalled = false
+        st.officeSkillsRegistered = false
       }
 
       const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
@@ -522,6 +692,11 @@ export function apply(ctx: Context, config: Config): void {
         st.agent = agent
         st.sessionId = sessionId
         st.kind = ref.kind
+        if (agent.ctx === undefined) {
+          console.warn('[im-bridge] Agent 没有 ctx，无法注入企微提示词')
+        } else {
+          installWecomChannel(agent.ctx, st)
+        }
         void unpinLegacyWecomTitle(agent)
         const cwd = agent.session.header?.cwd ?? stored?.cwd
         if (cwd !== undefined && cwd !== cfg().workspace) {
@@ -552,13 +727,7 @@ export function apply(ctx: Context, config: Config): void {
         const selected = { current: selection, assembled: undefined }
         installModelSelection(agentCtx, selected)
         if (presets !== undefined) await presets.mount(agentCtx, resolvedId)
-        agentCtx.inject(['systemPrompt'], (promptCtx) => {
-          promptCtx.systemPrompt.section({
-            name: 'deployment:persona',
-            order: 0,
-            text: () => resolvePersona(cfg(), settings),
-          })
-        })
+        installWecomChannel(agentCtx, st)
       }
       const agentOptions = { provider: selection.provider, model: selection.model }
 
@@ -637,7 +806,13 @@ export function apply(ctx: Context, config: Config): void {
     }
 
     async function handle(frame: WecomFrame, ref: WecomSessionRef, content: string): Promise<void> {
-      const st = await ensureAgent(ref)
+      let st = chats.get(ref.key)
+      if (st === undefined) {
+        st = emptyChatState()
+        chats.set(ref.key, st)
+      }
+      st.office = senderHasOfficeAccess(cfg().wecomCli.allowFrom, ref.sender)
+      st = await ensureAgent(ref)
       const startedAt = Date.now()
       const streamId = generateReqId('stream')
       let stopThinking: (() => void) | null = null

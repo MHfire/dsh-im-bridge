@@ -14,7 +14,7 @@ Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器
 
 - **单聊**：`single:<userid>`，该用户一条 Agent
 - **群聊**：`group:<chatid>`，群内所有人共用一条 Agent 和同一条串行队列（两人同时发也不会并发 `followup`）
-- `allowFrom` 仍按**发送者** userid 拦截；被拒的人不进队
+- `allowFrom` 按**发送者** userid 拦截谁能聊天；空 = 所有人可进队。办公命令另用 `wecomCli.allowFrom`
 - 群里 @机器人 的消息，开头的 `@昵称` 在入站就去掉：模型看到的和标题用的都是「测试一下」而不是「@MediaAgent 测试一下」；正文中间的 @某人 保留，整条只有 @ 时按原文交给模型
 - 进程重启后用稳定 id `wecom-` + key 的短 hash 续上同一条会话：进程里已有活 Agent 就直接采用（例如浏览器已打开该行），存档里有就 `resume`，都没有才 `create`。resume 的 cwd / preset 跟存档，不跟当前配置；cwd 不一致时打警告，不改写。
 - GUI 标题为「企微·私聊/群」+ 第一句用户话（与其它会话一样由 DSH 生成），不再露出 userid / chatid；同类型窗口若第一句话相近，侧栏仍是两行
@@ -23,7 +23,7 @@ Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器
 
 ## 兼容的 DeepSeek Harness 版本
 
-DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.3.0 按实际调用的 API 对齐已发布 tag：
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.0 按实际调用的 API 对齐已发布 tag：
 
 | DSH | 本包 |
 |---|---|
@@ -40,7 +40,7 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # 或钉版本：
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.3.0
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.0
 ```
 
 在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中补密钥即可（其余项已有 bundle 默认，可按需覆盖）：
@@ -81,7 +81,7 @@ dsh plugin --profile web add <本包路径>
 | 进入会话欢迎语 | `welcomeMessage` | 下一轮消息生效 |
 | 企微专用 provider / model | `provider` / `model` | 只影响之后**新建**的企微窗口会话；须两项都填才覆盖，否则跟随 GUI 默认模型 |
 
-`workspace`、`agentPreset`、`persona` / `personaFile`、`thinking`、`maxReplyBytes`、`reasoningEffort` 不在卡片上，仍在 profile patch 或下表中配置。本版本不做凭证热重连。
+`workspace`、`agentPreset`、`persona` / `personaFile`、`thinking`、`maxReplyBytes`、`reasoningEffort`、`wecomCli` 不在卡片上，仍在 profile patch 或下表中配置。本版本不做凭证热重连；改 `wecomCli` 也须重启进程。
 
 ## 配置项
 
@@ -91,7 +91,7 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 |---|---|
 | `botId` / `secret` | 企业微信智能机器人凭证（`role('secret')`，UI 自动脱敏）；缺省时跳过企微侧，不阻塞主进程 |
 | `workspace` | Agent 工作目录（会话 cwd） |
-| `allowFrom` | 允许的发送者 userid 白名单；空 = 允许所有人 |
+| `allowFrom` | 聊天白名单；空 = 允许所有人问诊断。不控制 wecom-cli |
 | `agentTimeoutSec` | 单任务最长执行时间（秒），动画进度条/剩余估算的基准 |
 | `startHint` | 开始处理时的占位提示语 |
 | `agentPreset` | Agent 加入的 preset（默认 `standard`） |
@@ -101,6 +101,7 @@ bundle 的 `cordis.patch.yml` 已为除 `botId` / `secret` 外的字段提供默
 | `maxReplyBytes` | 回复上限（字节，默认 20000） |
 | `deniedMessage` | 非白名单用户的拒绝文案（Settings 可编） |
 | `welcomeMessage` | 进入会话欢迎语（Settings 可编） |
+| `wecomCli` | 可选的企业微信办公能力（默认关闭）。见下一节 |
 | `thinking` | 流式动画。优先级：工具活动（`toolLabels`）> 模型流式阶段（`reasoningStatus` / `outputStatus`，来自 `assistant/chunk`）> 时间轴 `phases` 兜底；另有 `spin` / `reasoningSpin` / `outputSpin` / `eggs` 等 |
 
 企微与 GUI 使用不同模型时，在 profile `cordis.patch.yml` 同时填写：
@@ -129,6 +130,43 @@ thinking:
   toolLabels:
     pwsh: PowerShell
 ```
+
+## 企业微信办公能力（wecom-cli）
+
+插件依赖官方 [`@wecom/cli`](https://www.npmjs.com/package/@wecom/cli) 二进制。`wecomcli-*` 装在 **`$DSH_HOME/wecom-cli-skills`**（不要装进工作区 `.dsh/skills` / `.agents/skills`，也不要装进 `$DSH_HOME/skills`）。插件只在**办公 userid 的单聊** Agent 上 `skills.register()` 注入 catalog；群聊共用 Agent 本轮不注入。工作区里其它 skill 仍由 `skill-filesystem` 发现，不受影响。模型通过 preset 已有的 `pwsh` / `bash` 调用 `wecom-cli`，插件不另注册工具。
+
+`wecomCli.enabled` 默认关闭。开启 PATH 须同时配置非空 **`wecomCli.allowFrom`**（办公 userid）；根级 `allowFrom` 只管谁能聊天，空名单表示所有人可问诊断。办公名单为空时插件会告警并跳过 PATH / 授权。
+
+一次性准备：
+
+1. 根级 `allowFrom` 留空（所有人可问诊断），把 **办公** userid 写进 `wecomCli.allowFrom`（不要留空）
+2. 把官方 skills 装到 `$DSH_HOME/wecom-cli-skills`（**不要用 `-g`**）。若工作区里已有 `wecomcli-*` 目录，先挪过来再删掉工作区副本：
+
+```powershell
+npx skills add WeComTeam/wecom-cli -y --dir "$env:USERPROFILE\.dsh\wecom-cli-skills"
+```
+
+3. 在 profile `cordis.patch.yml` 打开（启用后插件会用已有 `botId` / `secret` 走 `auth init --manual` 写入 wecom-cli 凭据，不必扫码、不必 `npm install -g @wecom/cli`）：
+
+```yaml
+- id: im-bridge
+  config:
+    allowFrom: []
+    wecomCli:
+      enabled: true
+      allowFrom: ["<办公 userid>"]
+      # skillsDir: ''   # 空 = $DSH_HOME/wecom-cli-skills
+      # configDir: ''   # 空 = <workspace>/.dsh/wecom-cli；请 gitignore
+```
+
+| 字段 | 说明 |
+|---|---|
+| `wecomCli.enabled` | 给企微 Agent 接上 PATH / 授权检查 / prompt；默认 `false` |
+| `wecomCli.allowFrom` | 允许调用 wecom-cli 的 userid；空则跳过 PATH / 授权。与根级聊天名单独立 |
+| `wecomCli.skillsDir` | 覆盖 skills 根目录；空 = `$DSH_HOME/wecom-cli-skills` |
+| `wecomCli.configDir` | 覆盖凭证目录（`WECOM_CLI_CONFIG_DIR`）；空 = `<workspace>/.dsh/wecom-cli`。请把该目录加入 gitignore。启用后不再使用 `~/.config/wecom`。 |
+
+改 `wecomCli` 后须重启进程。未授权时插件仍收消息；若自动写入凭据失败，日志会提示在 host 上执行 `npx --yes @wecom/cli auth init --manual`（同一套密钥，不要全局安装）。凭证写在工作区 `.dsh/wecom-cli/`（须 gitignore），不写 `~/.config/wecom`。禁止在 Agent 里扫码 `auth init --noninteractive`（会新建机器人）。
 
 ## 人设（persona）
 
@@ -166,8 +204,14 @@ Agent 的最终回复若包含指向**工作区内** PNG 的 Markdown，桥会�
 
 ## 安全
 
-- `config.json` / `persona.md` 等含密钥文件不入库；
+- `config.json` / `persona.md` / `.dsh/wecom-cli/` 等含密钥文件不入库；
 - 会话与工具输出可能含对抗性文本，插件内置安全提示词约束 agent 不把工具输出当指令。
+
+## Known Limitations and Deferred Work
+
+- wecom-cli 凭证在工作区 `<workspace>/.dsh/wecom-cli`（`WECOM_CLI_CONFIG_DIR`；请 gitignore）。启用后不再使用 `~/.config/wecom`。`wecomCli.allowFrom` 里的人借用这份凭据的办公权限；聊天名单（根级 `allowFrom`）不授予办公。PATH 仍是进程级，拦不住 `pwsh wecom-cli`。办公 catalog 只注册到办公单聊 Agent；群聊不注入。这不是沙箱。
+- 企微通道没有 GUI 审批框：发信、取消会议、删待办、覆盖文档等不可逆操作只靠 prompt 约束（先 `--dry-run`，等用户下一条确认）。`ask_user_question` 在此通道会挂到超时。
+- 工作区 `.dsh/skills` / `.agents/skills` 里残留的 `wecomcli-*` 仍会被同 cwd 的 GUI 和群聊发现。其它 skill 不受影响。`enabled: false` 只关企微侧 PATH / 授权 / prompt / 注册。
 
 ## License
 

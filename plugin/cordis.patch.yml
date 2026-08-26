@@ -18,6 +18,12 @@
         maxReplyBytes: 20000
         deniedMessage: '无权访问本服务'
         welcomeMessage: '👋 办公助手已就绪。直接发消息即可，例如查文件、整理文档、查资料或处理日常事务。'
+        wecomCli:
+          enabled: false
+          skillsDir: ''
+          allowFrom: []
+          # skillsDir 空 = $DSH_HOME/wecom-cli-skills（不要用工作区 .dsh/skills）
+          # configDir: ''   # 空 = <workspace>/.dsh/wecom-cli
         thinking:
           eggAfterSec: 240
           intervalMs: 1500
