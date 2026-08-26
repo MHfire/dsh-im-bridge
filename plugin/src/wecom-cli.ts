@@ -46,17 +46,20 @@ export const SHIM_DIR_NAME = 'wecom-cli-bin'
 /** Timeout for `wecom-cli auth show --status`. */
 export const AUTH_PROBE_TIMEOUT_MS = 10_000
 
-/** Timeout for `wecom-cli auth init --manual` (CLI contacts WeCom). */
+/** Timeout for `wecom-cli auth init --bot-id/--secret` (CLI contacts WeCom). */
 export const AUTH_INIT_TIMEOUT_MS = 30_000
 
-/** Host fallback when stdin seeding of `--manual` does not authorize. */
+/** Host TTY fallback when automatic `--bot-id/--secret` seeding does not authorize. */
 export const AUTH_INIT_HINT = 'npx --yes @wecom/cli auth init --manual'
 
+/** Logged when plugin config has no Bot ID or Secret. Must never include the secret value. */
+export const AUTH_INIT_MISSING_MESSAGE = '缺少 botId 或密钥，无法写入 wecom-cli 凭据。'
+
 /**
- * Logged / returned when `--manual` exits non-zero. Must never include botId or secret.
+ * Logged when automatic seeding exits non-zero. Must never include botId or the secret value.
  */
 export const AUTH_INIT_FAILED_MESSAGE =
-  `wecom-cli auth init --manual 未能完成。请在 host 上执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`
+  `wecom-cli 未能用已有 Bot ID 完成授权。请重启 dsh，或在 host 终端执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`
 
 /** Logged when wecomCli is on but wecomCli.allowFrom is empty. */
 export const ALLOW_FROM_REQUIRED_MESSAGE =
@@ -108,9 +111,9 @@ export const WECOM_CLI_PROMPT = [
   '发信、取消会议、删除待办、覆盖文档等不可逆操作：先用 --dry-run 自检，在回复里说明将要做什么，等用户下一条消息确认后再执行。',
   '本机 wecom-cli 由 im-bridge 插件提供。禁止执行 npm install -g @wecom/cli 或 npm i -g @wecom/cli。',
   '若 wecom-cli 不在 PATH 上，不要自行安装，告诉用户开启 wecomCli.enabled、配好 wecomCli.allowFrom 并重启 dsh。',
-  '禁止执行 wecom-cli auth init --noninteractive，禁止扫码授权。扫码会新建智能机器人；凭证由插件用已有 botId/secret 维护。',
+  '禁止执行 wecom-cli auth init --noninteractive，禁止 auth init --manual 与 auth init --bot-id。禁止扫码授权。扫码会新建智能机器人；凭证由插件用已有 botId/密钥维护。',
   '若业务命令报 853004（cli token expired），直接重试该业务命令，不要 auth init。token 刷新写入工作区 .dsh/wecom-cli。',
-  '若刷新仍失败，告诉用户重启 dsh，或在 host 上执行 npx --yes @wecom/cli auth init --manual（同一套密钥，不要全局安装）。',
+  '若刷新仍失败，告诉用户重启 dsh，或在 host 终端执行 npx --yes @wecom/cli auth init --manual（同一套密钥，不要全局安装）。',
 ].join('\n')
 
 /** Prompt when the sender is not on `wecomCli.allowFrom`. */
@@ -609,48 +612,39 @@ export async function probeAuth(binJs: string): Promise<AuthStatus> {
 }
 
 /**
- * Stdin for `wecom-cli auth init --manual`: Bot ID, then Secret, each on its own line.
+ * Hidden `@wecom/cli` argv: `auth init --bot-id/--secret`.
+ * Official `--manual` needs a TTY; these flags skip prompts when stderr is not a terminal.
  * @param botId - plugin `botId`.
  * @param secret - plugin `secret`.
- * @returns the bytes to write to stdin.
+ * @returns argv after the launcher path. Do not log this array.
  */
-export function manualAuthStdin(botId: string, secret: string): string {
-  return `${botId.trim()}\n${secret.trim()}\n`
+export function authInitArgv(botId: string, secret: string): string[] {
+  return ['auth', 'init', '--bot-id', botId.trim(), '--secret', secret.trim()]
 }
 
 /**
- * Seed wecom-cli credentials from the plugin Bot ID / Secret via `--manual` stdin.
- * Does not log the secret. A CLI that requires a real TTY may still fail.
+ * Seed wecom-cli credentials from the plugin Bot ID / Secret via hidden `--bot-id/--secret`.
+ * Does not log the secret. Stdio stays piped so the CLI sees a non-TTY stderr.
  * @param binJs - absolute launcher path.
  * @param botId - plugin `botId`.
  * @param secret - plugin `secret`.
- * @returns `undefined` when the process exits 0; otherwise an error string with no secret.
+ * @returns `undefined` when the process exits 0; otherwise an error string with no secret value.
  */
-export async function tryManualAuth(binJs: string, botId: string, secret: string): Promise<string | undefined> {
+export async function trySeedAuth(binJs: string, botId: string, secret: string): Promise<string | undefined> {
   const id = botId.trim()
   const sec = secret.trim()
   if (id === '' || sec === '') {
-    return '缺少 botId 或 secret，无法执行 wecom-cli auth init --manual。'
+    return AUTH_INIT_MISSING_MESSAGE
   }
   try {
-    await new Promise<void>((resolve, reject) => {
-      const child = execFile(
-        process.execPath,
-        [binJs, 'auth', 'init', '--manual'],
-        { timeout: AUTH_INIT_TIMEOUT_MS, windowsHide: true },
-        (error) => {
-          if (error !== null) reject(error)
-          else resolve()
-        },
-      )
-      child.stdin?.on('error', () => {
-        // CLI closed stdin (needs TTY, or already exited); wait for the process result.
-      })
-      child.stdin?.end(manualAuthStdin(id, sec), 'utf8')
+    await execFileAsync(process.execPath, [binJs, ...authInitArgv(id, sec)], {
+      timeout: AUTH_INIT_TIMEOUT_MS,
+      windowsHide: true,
+      encoding: 'utf8',
     })
     return undefined
   } catch {
-    // Credential check failed, timeout, or CLI refused piped stdin; callers log AUTH_INIT_HINT.
+    // Credential check failed, timeout, or CLI rejected the hidden flags; callers log AUTH_INIT_HINT.
     return AUTH_INIT_FAILED_MESSAGE
   }
 }

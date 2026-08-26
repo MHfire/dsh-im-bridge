@@ -55,7 +55,7 @@ import {
   shouldEnableWecomCli,
   shouldInjectWecomOfficeSkills,
   skillsInstallHint,
-  tryManualAuth,
+  trySeedAuth,
   type InstallWecomSkillsResult,
   type WecomSkill,
 } from './wecom-cli.ts'
@@ -591,7 +591,7 @@ export function apply(ctx: Context, config: Config): void {
           }
           let status = await probeAuth(binJs)
           if (status === 'unauthorized') {
-            if ((await tryManualAuth(binJs, cfg().botId, cfg().secret)) === undefined) {
+            if ((await trySeedAuth(binJs, cfg().botId, cfg().secret)) === undefined) {
               status = await probeAuth(binJs)
             }
           }

@@ -142,7 +142,7 @@ One-time setup:
 1. Leave root `allowFrom` empty (everyone may ask) and put **office** userids in `wecomCli.allowFrom` (do not leave that empty)
 2. In **Settings → Plugins → WeCom Bridge**, click **Install official skills** (the Host downloads the official repo zip into `$DSH_HOME/wecom-cli-skills`). **Do not** use `npx skills add -g` (it leaks into the GUI). The skills CLI has **no `--dir`**, so that flag does not write into the plugin directory. If `wecomcli-*` folders already sit in the workspace, move them here and delete the workspace copies. You can also copy official `skills/wecomcli-*` into `$DSH_HOME/wecom-cli-skills` by hand.
 
-3. Enable it in the profile `cordis.patch.yml` (the plugin then writes wecom-cli credentials from the existing `botId` / `secret` via `auth init --manual`; no QR scan and no `npm install -g @wecom/cli`):
+3. Enable it in the profile `cordis.patch.yml` (the plugin then writes wecom-cli credentials from the existing `botId` / `secret` via hidden `auth init --bot-id/--secret`; no QR scan and no `npm install -g @wecom/cli`):
 
 ```yaml
 - id: im-bridge
@@ -162,7 +162,7 @@ One-time setup:
 | `wecomCli.skillsDir` | Override skills root; empty = `$DSH_HOME/wecom-cli-skills` |
 | `wecomCli.configDir` | Override the credential directory (`WECOM_CLI_CONFIG_DIR`); empty = `<workspace>/.dsh/wecom-cli`. Gitignore that directory. Once enabled, `~/.config/wecom` is unused. |
 
-Changing `wecomCli` requires a process restart. Messages still arrive when unauthorized; if automatic credential seeding fails, the log tells you to run `npx --yes @wecom/cli auth init --manual` on the host (the same Bot ID / Secret; do not install globally). Credentials live in workspace `.dsh/wecom-cli/` (gitignore it), not `~/.config/wecom`. Do not run `auth init --noninteractive` from the agent (that creates a new bot).
+Changing `wecomCli` requires a process restart. Messages still arrive when unauthorized; at boot the plugin seeds credentials with hidden `--bot-id/--secret` (stderr is not a TTY). If automatic seeding fails, the log tells you to run `npx --yes @wecom/cli auth init --manual` on a host terminal (the same Bot ID / Secret; do not install globally). Credentials live in workspace `.dsh/wecom-cli/` (gitignore it), not `~/.config/wecom`. Do not run `auth init --noninteractive` from the agent (that creates a new bot).
 
 ## Persona
 

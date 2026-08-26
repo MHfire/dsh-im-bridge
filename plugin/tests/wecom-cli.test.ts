@@ -8,6 +8,7 @@ import {
   ALLOW_FROM_REQUIRED_MESSAGE,
   AUTH_INIT_FAILED_MESSAGE,
   AUTH_INIT_HINT,
+  AUTH_INIT_MISSING_MESSAGE,
   SKILLS_SERVICE_MISSING_MESSAGE,
   WECOM_CLI_NO_OFFICE_PROMPT,
   WECOM_CLI_PROMPT,
@@ -23,7 +24,7 @@ import {
   extractWecomSkillsFromZip,
   installOfficialWecomSkills,
   loadWecomSkills,
-  manualAuthStdin,
+  authInitArgv,
   parseAuthStatus,
   parseSkillMarkdown,
   probeAuth,
@@ -37,7 +38,7 @@ import {
   shouldInjectWecomOfficeSkills,
   skillsInstallHint,
   toRuntimeSkillRegistration,
-  tryManualAuth,
+  trySeedAuth,
   WECOM_CLI_CONFIG_DIR_ENV,
   WecomSkillsInstallError,
   workspaceWecomcliLeakRoots,
@@ -491,6 +492,7 @@ test('WECOM_CLI_PROMPT forbids npm install -g, self-install, and QR auth init', 
   assert.match(WECOM_CLI_PROMPT, /wecomCli\.enabled/)
   assert.match(WECOM_CLI_PROMPT, /wecomCli\.allowFrom/)
   assert.match(WECOM_CLI_PROMPT, /auth init --noninteractive/)
+  assert.match(WECOM_CLI_PROMPT, /--bot-id/)
   assert.match(WECOM_CLI_PROMPT, /禁止扫码/)
   assert.match(WECOM_CLI_PROMPT, /853004/)
   assert.match(WECOM_CLI_PROMPT, /auth init --manual/)
@@ -502,50 +504,57 @@ test('WECOM_CLI_NO_OFFICE_PROMPT forbids wecom-cli', () => {
   assert.match(WECOM_CLI_NO_OFFICE_PROMPT, /没有企微办公权限/)
 })
 
-test('manualAuthStdin writes botId then secret as two lines', () => {
-  assert.equal(manualAuthStdin('bot-id', 'secret-value'), 'bot-id\nsecret-value\n')
-  assert.equal(manualAuthStdin('  bot-id  ', '  secret-value  '), 'bot-id\nsecret-value\n')
+test('authInitArgv uses hidden --bot-id/--secret and never --manual', () => {
+  assert.deepEqual(authInitArgv('  bot-id  ', '  secret-value  '), [
+    'auth', 'init', '--bot-id', 'bot-id', '--secret', 'secret-value',
+  ])
+  assert.ok(!authInitArgv('bot-id', 'secret-value').includes('--manual'))
+  assert.ok(!authInitArgv('bot-id', 'secret-value').includes('--noninteractive'))
 })
 
 test('AUTH_INIT_HINT is npx --manual and never names a secret', () => {
   assert.equal(AUTH_INIT_HINT, 'npx --yes @wecom/cli auth init --manual')
   assert.doesNotMatch(AUTH_INIT_HINT, /secret/i)
   assert.doesNotMatch(AUTH_INIT_FAILED_MESSAGE, /secret/i)
+  assert.doesNotMatch(AUTH_INIT_MISSING_MESSAGE, /secret/i)
   assert.match(AUTH_INIT_FAILED_MESSAGE, /npx --yes @wecom\/cli auth init --manual/)
   assert.doesNotMatch(AUTH_INIT_FAILED_MESSAGE, /npm install -g/)
 })
 
-test('tryManualAuth feeds stdin to a fake --manual launcher', async () => {
-  const root = scratch('manual-ok')
+test('trySeedAuth passes hidden flags to a fake launcher', async () => {
+  const root = scratch('seed-ok')
   mkdirSync(root, { recursive: true })
   const binJs = join(root, 'wecom.js')
   writeFileSync(binJs, [
-    'const chunks = []',
-    'process.stdin.on("data", (c) => chunks.push(c))',
-    'process.stdin.on("end", () => {',
-    '  const text = Buffer.concat(chunks).toString("utf8")',
-    '  process.exit(text === "bot-id\\nsecret-value\\n" && process.argv.includes("--manual") ? 0 : 1)',
-    '})',
+    'const argv = process.argv',
+    'const bot = argv.indexOf("--bot-id")',
+    'const sec = argv.indexOf("--secret")',
+    'const ok = bot >= 0 && sec >= 0',
+    '  && argv[bot + 1] === "bot-id"',
+    '  && argv[sec + 1] === "secret-value"',
+    '  && argv.includes("auth") && argv.includes("init")',
+    '  && !argv.includes("--manual") && !argv.includes("--noninteractive")',
+    'process.exit(ok ? 0 : 1)',
     '',
   ].join('\n'))
   try {
-    assert.equal(await tryManualAuth(binJs, 'bot-id', 'secret-value'), undefined)
+    assert.equal(await trySeedAuth(binJs, 'bot-id', 'secret-value'), undefined)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 })
 
-test('tryManualAuth returns a secret-free error when the launcher fails', async () => {
-  const root = scratch('manual-fail')
+test('trySeedAuth returns a secret-free error when the launcher fails', async () => {
+  const root = scratch('seed-fail')
   mkdirSync(root, { recursive: true })
   const binJs = join(root, 'wecom.js')
   writeFileSync(binJs, 'process.exit(1)\n')
   const secret = 'super-secret-xyz'
   try {
-    const message = await tryManualAuth(binJs, 'bot-id', secret)
+    const message = await trySeedAuth(binJs, 'bot-id', secret)
     assert.equal(message, AUTH_INIT_FAILED_MESSAGE)
     assert.doesNotMatch(message ?? '', new RegExp(secret))
-    assert.equal(await tryManualAuth(binJs, '', secret), '缺少 botId 或 secret，无法执行 wecom-cli auth init --manual。')
+    assert.equal(await trySeedAuth(binJs, '', secret), AUTH_INIT_MISSING_MESSAGE)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

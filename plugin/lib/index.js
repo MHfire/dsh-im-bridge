@@ -7446,14 +7446,16 @@ const WECOM_CLI_CONFIG_DIR_ENV = "WECOM_CLI_CONFIG_DIR";
 const SHIM_DIR_NAME = "wecom-cli-bin";
 /** Timeout for `wecom-cli auth show --status`. */
 const AUTH_PROBE_TIMEOUT_MS = 1e4;
-/** Timeout for `wecom-cli auth init --manual` (CLI contacts WeCom). */
+/** Timeout for `wecom-cli auth init --bot-id/--secret` (CLI contacts WeCom). */
 const AUTH_INIT_TIMEOUT_MS = 3e4;
-/** Host fallback when stdin seeding of `--manual` does not authorize. */
+/** Host TTY fallback when automatic `--bot-id/--secret` seeding does not authorize. */
 const AUTH_INIT_HINT = "npx --yes @wecom/cli auth init --manual";
+/** Logged when plugin config has no Bot ID or Secret. Must never include the secret value. */
+const AUTH_INIT_MISSING_MESSAGE = "缺少 botId 或密钥，无法写入 wecom-cli 凭据。";
 /**
-* Logged / returned when `--manual` exits non-zero. Must never include botId or secret.
+* Logged when automatic seeding exits non-zero. Must never include botId or the secret value.
 */
-const AUTH_INIT_FAILED_MESSAGE = `wecom-cli auth init --manual 未能完成。请在 host 上执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`;
+const AUTH_INIT_FAILED_MESSAGE = `wecom-cli 未能用已有 Bot ID 完成授权。请重启 dsh，或在 host 终端执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`;
 /** Logged when wecomCli is on but wecomCli.allowFrom is empty. */
 const ALLOW_FROM_REQUIRED_MESSAGE = "wecomCli 已开启但 wecomCli.allowFrom 为空；已跳过 wecom-cli 的 PATH 与授权检查。聊天仍由根级 allowFrom 控制（空 = 所有人）。请把办公 userid 配进 wecomCli.allowFrom。工作区 .dsh/skills 或 .agents/skills 里残留的 wecomcli-* 仍会被该 cwd 下所有 Agent 发现。";
 /** Logged when the Agent context has no skills.register. */
@@ -7486,9 +7488,9 @@ const WECOM_CLI_PROMPT = [
 	"发信、取消会议、删除待办、覆盖文档等不可逆操作：先用 --dry-run 自检，在回复里说明将要做什么，等用户下一条消息确认后再执行。",
 	"本机 wecom-cli 由 im-bridge 插件提供。禁止执行 npm install -g @wecom/cli 或 npm i -g @wecom/cli。",
 	"若 wecom-cli 不在 PATH 上，不要自行安装，告诉用户开启 wecomCli.enabled、配好 wecomCli.allowFrom 并重启 dsh。",
-	"禁止执行 wecom-cli auth init --noninteractive，禁止扫码授权。扫码会新建智能机器人；凭证由插件用已有 botId/secret 维护。",
+	"禁止执行 wecom-cli auth init --noninteractive，禁止 auth init --manual 与 auth init --bot-id。禁止扫码授权。扫码会新建智能机器人；凭证由插件用已有 botId/密钥维护。",
 	"若业务命令报 853004（cli token expired），直接重试该业务命令，不要 auth init。token 刷新写入工作区 .dsh/wecom-cli。",
-	"若刷新仍失败，告诉用户重启 dsh，或在 host 上执行 npx --yes @wecom/cli auth init --manual（同一套密钥，不要全局安装）。"
+	"若刷新仍失败，告诉用户重启 dsh，或在 host 终端执行 npx --yes @wecom/cli auth init --manual（同一套密钥，不要全局安装）。"
 ].join("\n");
 /** Prompt when the sender is not on `wecomCli.allowFrom`. */
 const WECOM_CLI_NO_OFFICE_PROMPT = ["本通道你没有企微办公权限。禁止调用 wecom-cli，禁止使用 wecomcli-* 技能。", "只回答诊断与当前工作区任务。不要发信、改日程、动微盘或通讯录。"].join("\n");
@@ -7875,42 +7877,39 @@ async function probeAuth(binJs) {
 	}
 }
 /**
-* Stdin for `wecom-cli auth init --manual`: Bot ID, then Secret, each on its own line.
+* Hidden `@wecom/cli` argv: `auth init --bot-id/--secret`.
+* Official `--manual` needs a TTY; these flags skip prompts when stderr is not a terminal.
 * @param botId - plugin `botId`.
 * @param secret - plugin `secret`.
-* @returns the bytes to write to stdin.
+* @returns argv after the launcher path. Do not log this array.
 */
-function manualAuthStdin(botId, secret) {
-	return `${botId.trim()}\n${secret.trim()}\n`;
+function authInitArgv(botId, secret) {
+	return [
+		"auth",
+		"init",
+		"--bot-id",
+		botId.trim(),
+		"--secret",
+		secret.trim()
+	];
 }
 /**
-* Seed wecom-cli credentials from the plugin Bot ID / Secret via `--manual` stdin.
-* Does not log the secret. A CLI that requires a real TTY may still fail.
+* Seed wecom-cli credentials from the plugin Bot ID / Secret via hidden `--bot-id/--secret`.
+* Does not log the secret. Stdio stays piped so the CLI sees a non-TTY stderr.
 * @param binJs - absolute launcher path.
 * @param botId - plugin `botId`.
 * @param secret - plugin `secret`.
-* @returns `undefined` when the process exits 0; otherwise an error string with no secret.
+* @returns `undefined` when the process exits 0; otherwise an error string with no secret value.
 */
-async function tryManualAuth(binJs, botId, secret) {
+async function trySeedAuth(binJs, botId, secret) {
 	const id = botId.trim();
 	const sec = secret.trim();
-	if (id === "" || sec === "") return "缺少 botId 或 secret，无法执行 wecom-cli auth init --manual。";
+	if (id === "" || sec === "") return AUTH_INIT_MISSING_MESSAGE;
 	try {
-		await new Promise((resolve, reject) => {
-			const child = execFile(process.execPath, [
-				binJs,
-				"auth",
-				"init",
-				"--manual"
-			], {
-				timeout: AUTH_INIT_TIMEOUT_MS,
-				windowsHide: true
-			}, (error) => {
-				if (error !== null) reject(error);
-				else resolve();
-			});
-			child.stdin?.on("error", () => {});
-			child.stdin?.end(manualAuthStdin(id, sec), "utf8");
+		await execFileAsync(process.execPath, [binJs, ...authInitArgv(id, sec)], {
+			timeout: AUTH_INIT_TIMEOUT_MS,
+			windowsHide: true,
+			encoding: "utf8"
 		});
 		return;
 	} catch {
@@ -8474,7 +8473,7 @@ function apply(ctx, config) {
 					else if (pathResult.shimDir !== void 0) console.log(`[im-bridge] 已把 wecom-cli shim 加入 PATH: ${pathResult.shimDir}`);
 					let status = await probeAuth(binJs);
 					if (status === "unauthorized") {
-						if (await tryManualAuth(binJs, cfg().botId, cfg().secret) === void 0) status = await probeAuth(binJs);
+						if (await trySeedAuth(binJs, cfg().botId, cfg().secret) === void 0) status = await probeAuth(binJs);
 					}
 					if (status === "authorized") console.log("[im-bridge] wecom-cli 已授权");
 					else if (status === "unauthorized") console.warn(`[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`);

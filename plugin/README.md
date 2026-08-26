@@ -142,7 +142,7 @@ thinking:
 1. 根级 `allowFrom` 留空（所有人可问诊断），把 **办公** userid 写进 `wecomCli.allowFrom`（不要留空）
 2. 在 **Settings → 插件配置 → 企业微信桥接** 点「安装官方 skills」（Host 下载官方仓库 zip，解到 `$DSH_HOME/wecom-cli-skills`）。**不要用** `npx skills add -g`（会泄漏给 GUI）；skills CLI **没有 `--dir`**，加了也不会写到程序目录。若工作区里已有 `wecomcli-*`，先挪到该目录再删工作区副本。也可手动把官方仓库 `skills/wecomcli-*` 拷进 `$DSH_HOME/wecom-cli-skills`。
 
-3. 在 profile `cordis.patch.yml` 打开（启用后插件会用已有 `botId` / `secret` 走 `auth init --manual` 写入 wecom-cli 凭据，不必扫码、不必 `npm install -g @wecom/cli`）：
+3. 在 profile `cordis.patch.yml` 打开（启用后插件会用已有 `botId` / `secret` 走 `auth init --bot-id/--secret` 写入 wecom-cli 凭据，不必扫码、不必 `npm install -g @wecom/cli`）：
 
 ```yaml
 - id: im-bridge
@@ -162,7 +162,7 @@ thinking:
 | `wecomCli.skillsDir` | 覆盖 skills 根目录；空 = `$DSH_HOME/wecom-cli-skills` |
 | `wecomCli.configDir` | 覆盖凭证目录（`WECOM_CLI_CONFIG_DIR`）；空 = `<workspace>/.dsh/wecom-cli`。请把该目录加入 gitignore。启用后不再使用 `~/.config/wecom`。 |
 
-改 `wecomCli` 后须重启进程。未授权时插件仍收消息；若自动写入凭据失败，日志会提示在 host 上执行 `npx --yes @wecom/cli auth init --manual`（同一套密钥，不要全局安装）。凭证写在工作区 `.dsh/wecom-cli/`（须 gitignore），不写 `~/.config/wecom`。禁止在 Agent 里扫码 `auth init --noninteractive`（会新建机器人）。
+改 `wecomCli` 后须重启进程。未授权时插件仍收消息；启动时用隐藏的 `--bot-id/--secret`（stderr 非 TTY）写入凭据。若自动写入失败，日志会提示在 host 终端执行 `npx --yes @wecom/cli auth init --manual`（同一套密钥，不要全局安装）。凭证写在工作区 `.dsh/wecom-cli/`（须 gitignore），不写 `~/.config/wecom`。禁止在 Agent 里扫码 `auth init --noninteractive`（会新建机器人）。
 
 ## 人设（persona）
 
