@@ -40,8 +40,24 @@ export const DEFAULT_WORKSPACE_CONFIG_DIR = join('.dsh', 'wecom-cli')
 /** Official CLI env that overrides `~/.config/wecom`. */
 export const WECOM_CLI_CONFIG_DIR_ENV = 'WECOM_CLI_CONFIG_DIR'
 
-/** Directory that holds PATH shims when wecom-cli is not already installed. */
+/** Directory that holds the PATH deny shim. */
 export const SHIM_DIR_NAME = 'wecom-cli-bin'
+
+/** Model-facing name of the gated office tool. */
+export const WECOM_CLI_TOOL_NAME = 'wecom_cli'
+
+/** Wall-clock limit for one gated office command. */
+export const WECOM_CLI_TOOL_TIMEOUT_MS = 120_000
+
+/** Byte ceiling applied to each of stdout and stderr before the model sees them. */
+export const WECOM_CLI_TOOL_MAX_OUTPUT_BYTES = 60_000
+
+/**
+ * What the PATH shim prints before exiting 1. ASCII only: a `.cmd` echoes the
+ * file's bytes, and a console under a non-UTF-8 code page would garble Chinese.
+ */
+export const WECOM_CLI_SHIM_DENY_MESSAGE =
+  'wecom-cli is disabled in this window. Office 1:1 agents must call the wecom_cli tool with an argv array; group chats have no office access.'
 
 /** Timeout for `wecom-cli auth show --status`. */
 export const AUTH_PROBE_TIMEOUT_MS = 10_000
@@ -49,17 +65,37 @@ export const AUTH_PROBE_TIMEOUT_MS = 10_000
 /** Timeout for `wecom-cli auth init --bot-id/--secret` (CLI contacts WeCom). */
 export const AUTH_INIT_TIMEOUT_MS = 30_000
 
-/** Host TTY fallback when automatic `--bot-id/--secret` seeding does not authorize. */
-export const AUTH_INIT_HINT = 'npx --yes @wecom/cli auth init --manual'
+/** Host TTY fallback command; the credential directory is deployment-specific, so use {@link authInitHint}. */
+export const AUTH_INIT_COMMAND = 'npx --yes @wecom/cli auth init --manual'
+
+/**
+ * Host-terminal fallback that writes into the credential directory this plugin reads.
+ * The plugin injects `WECOM_CLI_CONFIG_DIR` per spawn, so a bare terminal would
+ * otherwise authorize `~/.config/wecom`, which nothing here reads.
+ * @param configDir - absolute credential directory.
+ * @param platform - target platform; selects pwsh or POSIX env syntax.
+ * @returns a one-line command to run on the host.
+ */
+export function authInitHint(
+  configDir: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === 'win32'
+    ? `$env:${WECOM_CLI_CONFIG_DIR_ENV}='${configDir}'; ${AUTH_INIT_COMMAND}`
+    : `${WECOM_CLI_CONFIG_DIR_ENV}='${configDir}' ${AUTH_INIT_COMMAND}`
+}
 
 /** Logged when plugin config has no Bot ID or Secret. Must never include the secret value. */
 export const AUTH_INIT_MISSING_MESSAGE = '缺少 botId 或密钥，无法写入 wecom-cli 凭据。'
 
 /**
  * Logged when automatic seeding exits non-zero. Must never include botId or the secret value.
+ * @param configDir - absolute credential directory, for the manual fallback.
+ * @returns the operator-facing failure line.
  */
-export const AUTH_INIT_FAILED_MESSAGE =
-  `wecom-cli 未能用已有 Bot ID 完成授权。请重启 dsh，或在 host 终端执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`
+export function authInitFailedMessage(configDir: string): string {
+  return `wecom-cli 未能用已有 Bot ID 完成授权。请重启 dsh，或在 host 终端执行 ${authInitHint(configDir)}（输入同一套密钥，不要全局安装）。`
+}
 
 /** Logged when wecomCli is on but wecomCli.allowFrom is empty. */
 export const ALLOW_FROM_REQUIRED_MESSAGE =
@@ -68,6 +104,10 @@ export const ALLOW_FROM_REQUIRED_MESSAGE =
 /** Logged when the Agent context has no skills.register. */
 export const SKILLS_SERVICE_MISSING_MESSAGE =
   '当前 Agent 没有 skills 服务，无法注册 wecomcli-*。'
+
+/** Logged when the Agent context has no tools.register. */
+export const TOOLS_SERVICE_MISSING_MESSAGE =
+  `当前 Agent 没有 tools 服务，无法注册 ${WECOM_CLI_TOOL_NAME}，办公命令不可用。`
 
 /** Logged when workspace scan roots still contain wecomcli-*. */
 export const WORKSPACE_WECOMCLI_LEAK_MESSAGE =
@@ -105,21 +145,29 @@ function isZipDirectoryEntry(name: string, data: Uint8Array): boolean {
   return !last.includes('.')
 }
 
-/** Extra system-prompt rules for the WeCom channel (no GUI confirm dialog). */
+/** Channel rules for every WeCom Agent: no GUI confirm, so `ask_user_question` hangs. */
+export const WECOM_CHANNEL_PROMPT =
+  '本通道是企业微信，没有确认框。禁止调用 ask_user_question，它会挂到任务超时；有问题写在回复里问。'
+
+/** Extra system-prompt rules for office 1:1 (gated `wecom_cli` tool). */
 export const WECOM_CLI_PROMPT = [
-  '本通道是企业微信，没有 GUI 确认框。不要调用 ask_user_question，它会一直等到任务超时。',
-  '发信、取消会议、删除待办、覆盖文档等不可逆操作：先用 --dry-run 自检，在回复里说明将要做什么，等用户下一条消息确认后再执行。',
-  '本机 wecom-cli 由 im-bridge 插件提供。禁止执行 npm install -g @wecom/cli 或 npm i -g @wecom/cli。',
-  '若 wecom-cli 不在 PATH 上，不要自行安装，告诉用户开启 wecomCli.enabled、配好 wecomCli.allowFrom 并重启 dsh。',
-  '禁止执行 wecom-cli auth init --noninteractive，禁止 auth init --manual 与 auth init --bot-id。禁止扫码授权。扫码会新建智能机器人；凭证由插件用已有 botId/密钥维护。',
-  '若业务命令报 853004（cli token expired），直接重试该业务命令，不要 auth init。token 刷新写入工作区 .dsh/wecom-cli。',
-  '若刷新仍失败，告诉用户重启 dsh，或在 host 终端执行 npx --yes @wecom/cli auth init --manual（同一套密钥，不要全局安装）。',
+  WECOM_CHANNEL_PROMPT,
+  `办公只用 ${WECOM_CLI_TOOL_NAME}：argv 为 wecom-cli 之后的参数，例如 ["message","aibot","sessions","list"]。禁止用 pwsh/bash/npx/npm 再跑 wecom-cli。`,
+  '发信、取消会议、删待办、覆盖文档：先 --dry-run，回复里说明，等用户下一条确认再执行。',
+  `禁止任何 auth init 与扫码（会新建机器人）。凭证由插件维护。报 853004 时用 ${WECOM_CLI_TOOL_NAME} 重试该命令；仍失败则让用户重启 dsh。`,
 ].join('\n')
 
-/** Prompt when the sender is not on `wecomCli.allowFrom`. */
+/** Prompt for group chats, non-office 1:1, and WeCom agents with wecomCli off. */
 export const WECOM_CLI_NO_OFFICE_PROMPT = [
-  '本通道你没有企微办公权限。禁止调用 wecom-cli，禁止使用 wecomcli-* 技能。',
-  '只回答诊断与当前工作区任务。不要发信、改日程、动微盘或通讯录。',
+  WECOM_CHANNEL_PROMPT,
+  `本通道没有企微办公权限：没有 ${WECOM_CLI_TOOL_NAME}，禁止 wecom-cli / npx @wecom/cli / wecomcli-*。只回答诊断与当前工作区任务。`,
+].join('\n')
+
+/** Prepended to every official skill body: its `wecom-cli ...` lines are not runnable here. */
+export const WECOM_CLI_SKILL_PREFIX = [
+  `执行方式：本机没有可直接运行的 wecom-cli 命令。下文每条 \`wecom-cli ...\` 都改为调用 ${WECOM_CLI_TOOL_NAME} 工具，argv 传命令名之后的参数。`,
+  `例如 \`wecom-cli message aibot send --chat-id X\` → ${WECOM_CLI_TOOL_NAME}({"argv":["message","aibot","send","--chat-id","X"]})。`,
+  '禁止用 pwsh/bash/npx 运行 wecom-cli。',
 ].join('\n')
 
 /** One parsed official wecom-cli skill. */
@@ -148,18 +196,57 @@ export interface RuntimeSkillRegistration {
   resourceBase: { kind: 'directory'; path: string }
 }
 
-/** Minimal Cordis face used to look up `skills`. */
-export interface SkillRegisterHost {
-  /** Service lookup; missing `skills` is a no-op with a warning. */
+/** Minimal Cordis face used to look up an optional Agent-scoped service. */
+export interface AgentServiceHost {
+  /** Service lookup; a missing service is a no-op with a warning. */
   get(name: string): unknown
 }
 
-/** Result of putting wecom-cli on PATH. */
+/** One completed gated CLI run; matches the tool's `output.schema` exactly. */
+export interface WecomCliRun {
+  /** Captured standard output, clipped to {@link WECOM_CLI_TOOL_MAX_OUTPUT_BYTES}. */
+  stdout: string
+  /** Captured standard error, clipped the same way; also carries spawn failures. */
+  stderr: string
+  /** Process exit code; a spawn failure or timeout reports 1. */
+  exitCode: number
+}
+
+/** The part of a DSH tool execution context this tool uses. */
+export interface RuntimeToolExec {
+  /** Caller-owned cancellation for this call. */
+  signal: AbortSignal
+}
+
+/** Duck-typed `ctx.tools.register()` payload (no `@deepseek-ai/dsh-tools` import). */
+export interface RuntimeToolRegistration {
+  /** Model-visible tool name. */
+  name: string
+  /** Model-visible description. */
+  description: string
+  /** JSON Schema for the model's arguments. */
+  parameters: Record<string, unknown>
+  /** Mandatory canonical output declaration; the registry validates every returned value against `schema`. */
+  output: {
+    /** JSON Schema of the value `execute` returns. */
+    schema: Record<string, unknown>
+    /** Pure projection from the canonical value to model-facing content. */
+    render(args: unknown, value: unknown): Array<{ type: 'text'; text: string }>
+  }
+  /** Cooperative wall-clock budget enforced by the host's timeout policy. */
+  timeoutMs?: number
+  /** Run one accepted call. */
+  execute(args: unknown, exec: RuntimeToolExec): Promise<WecomCliRun>
+  /** Pure pending-state card, derived from `args` alone. */
+  presentCall(args: unknown): { card: 'terminal'; title: string }
+}
+
+/** Result of installing the PATH deny shim. */
 export interface EnsureOnPathResult {
-  /** True when a wecom-cli executable was already on PATH. */
-  alreadyOnPath: boolean
-  /** Shim directory when this process wrote one. */
-  shimDir?: string
+  /** Directory prepended to PATH; holds the deny shim. */
+  shimDir: string
+  /** True when another wecom-cli executable was already on PATH and is now shadowed. */
+  shadowed: boolean
 }
 
 /** `wecom-cli auth show --status` outcome. */
@@ -226,15 +313,29 @@ export function resolveConfigDir(configured: string, workspace: string): string 
 }
 
 /**
- * Create `dir` and set `WECOM_CLI_CONFIG_DIR` so the CLI does not use `~/.config/wecom`.
+ * Create the credential directory. Deliberately does not touch `process.env`:
+ * an exported `WECOM_CLI_CONFIG_DIR` would hand the authorized identity to every
+ * child process, including a group chat's shell reaching a CLI copy some other way.
  * @param dir - absolute credential directory.
- * @param env - environment object to mutate; defaults to `process.env`.
  * @returns `dir`.
  */
-export function ensureConfigDir(dir: string, env: NodeJS.ProcessEnv = process.env): string {
+export function ensureConfigDir(dir: string): string {
   mkdirSync(dir, { recursive: true })
-  env[WECOM_CLI_CONFIG_DIR_ENV] = dir
   return dir
+}
+
+/**
+ * Environment for one CLI spawn: `WECOM_CLI_CONFIG_DIR` reaches the CLI only here,
+ * never `~/.config/wecom` and never the ambient process environment.
+ * @param configDir - absolute credential directory.
+ * @param base - environment to extend; defaults to `process.env`.
+ * @returns a new environment object; `base` is not mutated.
+ */
+export function wecomCliEnv(
+  configDir: string,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...base, [WECOM_CLI_CONFIG_DIR_ENV]: configDir }
 }
 
 /**
@@ -416,6 +517,8 @@ export function countWecomcliSkills(skills: readonly WecomSkill[]): number {
 
 /**
  * Map a parsed wecomcli-* skill to a runtime registration. Other names are ignored.
+ * The body keeps the official `wecom-cli ...` command lines, so
+ * {@link WECOM_CLI_SKILL_PREFIX} leads and redirects them to the gated tool.
  * @param skill - parsed SKILL.md.
  * @returns the registration, or undefined when the name is not `wecomcli-*`.
  */
@@ -425,7 +528,7 @@ export function toRuntimeSkillRegistration(skill: WecomSkill): RuntimeSkillRegis
     name: skill.name,
     description: skill.description,
     source: 'runtime',
-    content: skill.content,
+    content: `${WECOM_CLI_SKILL_PREFIX}\n\n${skill.content}`,
     resourceBase: { kind: 'directory', path: skill.directory },
   }
 }
@@ -437,7 +540,7 @@ export function toRuntimeSkillRegistration(skill: WecomSkill): RuntimeSkillRegis
  * @returns how many skills were registered.
  */
 export function registerWecomOfficeSkills(
-  agentCtx: SkillRegisterHost,
+  agentCtx: AgentServiceHost,
   skills: readonly WecomSkill[],
 ): number {
   const registry = skillsRegisterOf(agentCtx)
@@ -455,7 +558,7 @@ export function registerWecomOfficeSkills(
   return count
 }
 
-function skillsRegisterOf(agentCtx: SkillRegisterHost): { register(skill: RuntimeSkillRegistration): () => void } | undefined {
+function skillsRegisterOf(agentCtx: AgentServiceHost): { register(skill: RuntimeSkillRegistration): () => void } | undefined {
   const skills = agentCtx.get('skills')
   if (skills === undefined || skills === null || typeof skills !== 'object') return undefined
   const register = (skills as { register?: unknown }).register
@@ -514,50 +617,55 @@ export function wecomCliOnPath(
 }
 
 /**
- * Write a PATH shim that runs `binJs` via this Node, and prepend the shim dir.
- * Skips writing when wecom-cli is already on PATH.
- * @param binJs - absolute path to `@wecom/cli`'s `bin/wecom.js`.
+ * Write the deny shim and put it first on PATH, shadowing any other wecom-cli.
+ * Every child process of this host — group chats, the GUI, the user's own
+ * terminal tools — resolves `wecom-cli` to a command that refuses; the plugin
+ * itself never goes through PATH.
  * @param options - home, env, and platform overrides for tests.
- * @returns whether a pre-existing binary was reused, and the shim dir if written.
+ * @returns the shim directory and whether another wecom-cli was shadowed.
  */
-export function ensureOnPath(binJs: string, options?: {
+export function ensureOnPath(options?: {
   dshHome?: string
   env?: NodeJS.ProcessEnv
   platform?: NodeJS.Platform
-  execPath?: string
 }): EnsureOnPathResult {
   const env = options?.env ?? process.env
   const platform = options?.platform ?? process.platform
-  if (wecomCliOnPath(env, platform)) return { alreadyOnPath: true }
+  const shadowed = wecomCliOnPath(env, platform)
   const dshHome = options?.dshHome ?? resolveDshHome(env)
   const shimDir = join(dshHome, SHIM_DIR_NAME)
-  const execPath = options?.execPath ?? process.execPath
-  writeWecomShim(shimDir, binJs, platform, execPath)
+  writeWecomShim(shimDir, platform)
   prependPath(shimDir, env, platform)
-  return { alreadyOnPath: false, shimDir }
+  return { shimDir, shadowed }
 }
 
 /**
- * Write `wecom-cli` / `wecom-cli.cmd` that execs `binJs`.
+ * Write `wecom-cli` / `wecom-cli.cmd` that print {@link WECOM_CLI_SHIM_DENY_MESSAGE}
+ * and exit 1. The message names the tool that does work, so a model following a
+ * skill body's `wecom-cli ...` line learns the supported route from the failure.
  * @param shimDir - directory to create.
- * @param binJs - absolute launcher path.
  * @param platform - target platform.
- * @param execPath - Node executable to put in the shim.
  * @returns `shimDir`.
  */
 export function writeWecomShim(
   shimDir: string,
-  binJs: string,
   platform: NodeJS.Platform = process.platform,
-  execPath: string = process.execPath,
 ): string {
   mkdirSync(shimDir, { recursive: true })
   if (platform === 'win32') {
-    writeFileSync(join(shimDir, 'wecom-cli.cmd'), `@echo off\r\n"${execPath}" "${binJs}" %*\r\n`, 'utf8')
+    writeFileSync(
+      join(shimDir, 'wecom-cli.cmd'),
+      `@echo off\r\necho ${WECOM_CLI_SHIM_DENY_MESSAGE}\r\nexit /b 1\r\n`,
+      'utf8',
+    )
     return shimDir
   }
   const posix = join(shimDir, 'wecom-cli')
-  writeFileSync(posix, `#!/bin/sh\nexec "${execPath}" "${binJs}" "$@"\n`, { encoding: 'utf8', mode: 0o755 })
+  writeFileSync(
+    posix,
+    `#!/bin/sh\necho '${WECOM_CLI_SHIM_DENY_MESSAGE}'\nexit 1\n`,
+    { encoding: 'utf8', mode: 0o755 },
+  )
   chmodSync(posix, 0o755)
   return shimDir
 }
@@ -592,13 +700,15 @@ export function parseAuthStatus(stdout: string): AuthStatus {
 /**
  * Run `wecom-cli auth show --status` against `binJs`.
  * @param binJs - absolute launcher path.
+ * @param configDir - credential directory injected for this spawn.
  * @returns the parsed status; spawn failures become `error`.
  */
-export async function probeAuth(binJs: string): Promise<AuthStatus> {
+export async function probeAuth(binJs: string, configDir: string): Promise<AuthStatus> {
   try {
     const { stdout } = await execFileAsync(process.execPath, [binJs, 'auth', 'show', '--status'], {
       timeout: AUTH_PROBE_TIMEOUT_MS,
       windowsHide: true,
+      env: wecomCliEnv(configDir),
     })
     return parseAuthStatus(String(stdout))
   } catch (error) {
@@ -628,9 +738,15 @@ export function authInitArgv(botId: string, secret: string): string[] {
  * @param binJs - absolute launcher path.
  * @param botId - plugin `botId`.
  * @param secret - plugin `secret`.
+ * @param configDir - credential directory the seeded credentials are written to.
  * @returns `undefined` when the process exits 0; otherwise an error string with no secret value.
  */
-export async function trySeedAuth(binJs: string, botId: string, secret: string): Promise<string | undefined> {
+export async function trySeedAuth(
+  binJs: string,
+  botId: string,
+  secret: string,
+  configDir: string,
+): Promise<string | undefined> {
   const id = botId.trim()
   const sec = secret.trim()
   if (id === '' || sec === '') {
@@ -641,12 +757,191 @@ export async function trySeedAuth(binJs: string, botId: string, secret: string):
       timeout: AUTH_INIT_TIMEOUT_MS,
       windowsHide: true,
       encoding: 'utf8',
+      env: wecomCliEnv(configDir),
     })
     return undefined
   } catch {
-    // Credential check failed, timeout, or CLI rejected the hidden flags; callers log AUTH_INIT_HINT.
-    return AUTH_INIT_FAILED_MESSAGE
+    // Credential check failed, timeout, or CLI rejected the hidden flags.
+    return authInitFailedMessage(configDir)
   }
+}
+
+/**
+ * Reject argv that would re-authorize the CLI. QR / `auth init` creates a NEW
+ * bot; credentials are the plugin's job, and `--bot-id/--secret` never belong
+ * in a model-supplied command.
+ * @param argv - arguments after the `wecom-cli` name.
+ * @returns a model-facing reason, or undefined when the command may run.
+ */
+export function argvForbiddenAuth(argv: readonly string[]): string | undefined {
+  const tokens = new Set(argv.map(token => token.trim().toLowerCase()))
+  if (tokens.has('auth') && tokens.has('init')) {
+    return '禁止 auth init：重新授权会新建智能机器人。凭证由 im-bridge 用已有 botId/密钥维护；报 853004 时直接重试业务命令。'
+  }
+  if (tokens.has('--bot-id') || tokens.has('--secret')) {
+    return '禁止在 argv 里传 --bot-id/--secret。'
+  }
+  return undefined
+}
+
+/**
+ * Validate the model's tool arguments.
+ * @param args - raw tool arguments.
+ * @returns the argv array.
+ * @throws when `argv` is missing, empty, or not all strings.
+ */
+export function parseWecomCliArgs(args: unknown): string[] {
+  const argv = typeof args === 'object' && args !== null
+    ? (args as { argv?: unknown }).argv
+    : undefined
+  if (!Array.isArray(argv) || argv.length === 0 || argv.some(item => typeof item !== 'string')) {
+    throw new Error(`${WECOM_CLI_TOOL_NAME} 需要 argv：非空字符串数组，例如 ["message","aibot","sessions","list"]`)
+  }
+  return argv as string[]
+}
+
+/**
+ * Clip `text` to a byte ceiling; a split multibyte character becomes U+FFFD.
+ * @param text - captured stream contents.
+ * @param limit - byte ceiling.
+ * @returns `text`, or a truncated copy that states the original byte length.
+ */
+export function clipOutput(text: string, limit: number = WECOM_CLI_TOOL_MAX_OUTPUT_BYTES): string {
+  const bytes = Buffer.from(text, 'utf8')
+  if (bytes.byteLength <= limit) return text
+  const head = new TextDecoder().decode(bytes.subarray(0, limit))
+  return `${head}\n…（输出已截断，原始 ${String(bytes.byteLength)} 字节）`
+}
+
+/**
+ * Run one office command directly against `binJs`, bypassing PATH and the deny shim.
+ * A non-zero exit is a domain result, not a throw; cancellation propagates.
+ * @param binJs - absolute launcher path.
+ * @param argv - arguments after the `wecom-cli` name.
+ * @param configDir - credential directory injected for this spawn.
+ * @param signal - caller cancellation from the tool execution.
+ * @returns clipped stdout/stderr and the exit code.
+ */
+export async function runWecomCli(
+  binJs: string,
+  argv: readonly string[],
+  configDir: string,
+  signal?: AbortSignal,
+): Promise<WecomCliRun> {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [binJs, ...argv], {
+      timeout: WECOM_CLI_TOOL_TIMEOUT_MS,
+      windowsHide: true,
+      encoding: 'utf8',
+      maxBuffer: WECOM_CLI_TOOL_MAX_OUTPUT_BYTES * 4,
+      env: wecomCliEnv(configDir),
+      signal,
+    })
+    return { stdout: clipOutput(String(stdout)), stderr: clipOutput(String(stderr)), exitCode: 0 }
+  } catch (error) {
+    if (signal?.aborted === true) throw error
+    const failure = error as { stdout?: unknown; stderr?: unknown; code?: unknown; message?: unknown }
+    const stderr = String(failure.stderr ?? '') || String(failure.message ?? '')
+    return {
+      stdout: clipOutput(String(failure.stdout ?? '')),
+      stderr: clipOutput(stderr),
+      exitCode: typeof failure.code === 'number' ? failure.code : 1,
+    }
+  }
+}
+
+/**
+ * Model-facing text for one run: stdout, then stderr, then the exit code.
+ * @param value - completed run.
+ * @returns the rendered block.
+ */
+export function renderWecomCliRun(value: WecomCliRun): string {
+  const parts: string[] = []
+  if (value.stdout.trim() !== '') parts.push(value.stdout.trimEnd())
+  if (value.stderr.trim() !== '') parts.push(`[stderr]\n${value.stderr.trimEnd()}`)
+  parts.push(`[exit code: ${String(value.exitCode)}]`)
+  return parts.join('\n')
+}
+
+/**
+ * Build the gated office tool. Registering it on an Agent context is the only
+ * way a model reaches wecom-cli; PATH resolves to the deny shim everywhere.
+ * @param binJs - absolute launcher path.
+ * @param configDir - credential directory injected into every run.
+ * @returns the duck-typed `ctx.tools.register()` payload.
+ */
+export function wecomCliToolDefinition(binJs: string, configDir: string): RuntimeToolRegistration {
+  return {
+    name: WECOM_CLI_TOOL_NAME,
+    description: '执行企业微信办公命令（wecom-cli）。argv 是 wecom-cli 之后的参数，例如 ["message","aibot","sessions","list"]。禁止 auth init 与扫码授权；不要用 pwsh/bash/npx 运行 wecom-cli。',
+    parameters: {
+      type: 'object',
+      properties: {
+        argv: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'wecom-cli 之后的参数，逐个元素，不要拼成一整条命令行。',
+        },
+      },
+      required: ['argv'],
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          stdout: { type: 'string' },
+          stderr: { type: 'string' },
+          exitCode: { type: 'number' },
+        },
+        required: ['stdout', 'stderr', 'exitCode'],
+      },
+      render: (_args, value) => [{ type: 'text', text: renderWecomCliRun(value as WecomCliRun) }],
+    },
+    timeoutMs: WECOM_CLI_TOOL_TIMEOUT_MS,
+    async execute(args, exec) {
+      const argv = parseWecomCliArgs(args)
+      const forbidden = argvForbiddenAuth(argv)
+      if (forbidden !== undefined) throw new Error(forbidden)
+      exec.signal.throwIfAborted()
+      return runWecomCli(binJs, argv, configDir, exec.signal)
+    },
+    presentCall: (args) => {
+      const argv = typeof args === 'object' && args !== null ? (args as { argv?: unknown }).argv : undefined
+      const shown = Array.isArray(argv) ? argv.filter(item => typeof item === 'string').join(' ') : ''
+      return { card: 'terminal', title: `wecom-cli ${shown}`.trimEnd() }
+    },
+  }
+}
+
+/**
+ * Register the gated office tool on this Agent's tools layer. Must be called on
+ * `agentCtx`: a host context would register it globally, exposing it to the GUI
+ * and to group chats.
+ * @param agentCtx - the Agent-scoped Cordis context.
+ * @param binJs - absolute launcher path.
+ * @param configDir - credential directory injected into every run.
+ * @returns true when the tool was registered.
+ */
+export function registerWecomCliTool(
+  agentCtx: AgentServiceHost,
+  binJs: string,
+  configDir: string,
+): boolean {
+  const registry = toolsRegisterOf(agentCtx)
+  if (registry === undefined) {
+    console.warn(`[im-bridge] ${TOOLS_SERVICE_MISSING_MESSAGE}`)
+    return false
+  }
+  registry.register(wecomCliToolDefinition(binJs, configDir))
+  return true
+}
+
+function toolsRegisterOf(agentCtx: AgentServiceHost): { register(tool: RuntimeToolRegistration): () => void } | undefined {
+  const tools = agentCtx.get('tools')
+  if (tools === undefined || tools === null || typeof tools !== 'object') return undefined
+  const register = (tools as { register?: unknown }).register
+  if (typeof register !== 'function') return undefined
+  return tools as { register(tool: RuntimeToolRegistration): () => void }
 }
 
 /**

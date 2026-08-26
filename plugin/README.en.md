@@ -133,9 +133,11 @@ thinking:
 
 ## WeCom office skills (wecom-cli)
 
-The plugin depends on the official [`@wecom/cli`](https://www.npmjs.com/package/@wecom/cli) binary. Install `wecomcli-*` under **`$DSH_HOME/wecom-cli-skills`** (not workspace `.dsh/skills` / `.agents/skills`, and not `$DSH_HOME/skills`). The plugin `skills.register()`s that catalog only on the **office userid’s 1:1** agent; group chats that share an agent do not get it in this build. Other workspace skills stay on `skill-filesystem`. The model runs `wecom-cli` through the preset’s existing `pwsh` / `bash` tool; this plugin does not register a separate tool.
+The plugin depends on the official [`@wecom/cli`](https://www.npmjs.com/package/@wecom/cli) binary. Install `wecomcli-*` under **`$DSH_HOME/wecom-cli-skills`** (not workspace `.dsh/skills` / `.agents/skills`, and not `$DSH_HOME/skills`). Only the **office userid’s 1:1** agent gets the office layer: `skills.register()` for the catalog and `tools.register()` for the gated `wecom_cli` tool. Both go through that agent’s own ctx, so group chats and the GUI never see them. Other workspace skills stay on `skill-filesystem`.
 
-`wecomCli.enabled` is off by default. Turning PATH on requires a non-empty **`wecomCli.allowFrom`** (office userids). Root `allowFrom` only gates who may chat; empty means everyone may ask. An empty office list logs a warning and skips PATH / auth.
+Office commands run **only through the `wecom_cli` tool**: the model passes `argv` (the arguments after `wecom-cli`), the plugin spawns the official binary directly, and any `auth init` is refused. The `wecom-cli` on PATH is a shim that prints a refusal and exits 1, so group chats, the GUI, and any `pwsh wecom-cli` fail; the shim’s message points back at `wecom_cli`. The credential directory is never exported to the process environment — it is injected per spawn.
+
+`wecomCli.enabled` is off by default. Turning it on requires a non-empty **`wecomCli.allowFrom`** (office userids). Root `allowFrom` only gates who may chat; empty means everyone may ask. An empty office list logs a warning and skips the shim / auth.
 
 One-time setup:
 
@@ -157,12 +159,12 @@ One-time setup:
 
 | Field | Description |
 |---|---|
-| `wecomCli.enabled` | Wire PATH / auth / prompt for WeCom agents; default `false` |
-| `wecomCli.allowFrom` | Userids allowed to run wecom-cli; empty skips PATH / auth. Independent of the chat list |
+| `wecomCli.enabled` | Install the PATH deny shim, run the auth check, and wire the prompt plus the `wecom_cli` tool; default `false` |
+| `wecomCli.allowFrom` | Userids that receive the `wecom_cli` tool; empty skips the shim / auth. Independent of the chat list |
 | `wecomCli.skillsDir` | Override skills root; empty = `$DSH_HOME/wecom-cli-skills` |
-| `wecomCli.configDir` | Override the credential directory (`WECOM_CLI_CONFIG_DIR`); empty = `<workspace>/.dsh/wecom-cli`. Gitignore that directory. Once enabled, `~/.config/wecom` is unused. |
+| `wecomCli.configDir` | Override the credential directory; empty = `<workspace>/.dsh/wecom-cli`. Gitignore that directory. `WECOM_CLI_CONFIG_DIR` is injected only when the plugin spawns the CLI, never into the process environment, so `~/.config/wecom` stays unused. |
 
-Changing `wecomCli` requires a process restart. Messages still arrive when unauthorized; at boot the plugin seeds credentials with hidden `--bot-id/--secret` (stderr is not a TTY). If automatic seeding fails, the log tells you to run `npx --yes @wecom/cli auth init --manual` on a host terminal (the same Bot ID / Secret; do not install globally). Credentials live in workspace `.dsh/wecom-cli/` (gitignore it), not `~/.config/wecom`. Do not run `auth init --noninteractive` from the agent (that creates a new bot).
+Changing `wecomCli` requires a process restart. Messages still arrive when unauthorized; at boot the plugin seeds credentials with hidden `--bot-id/--secret` (stderr is not a TTY). If automatic seeding fails, the log prints a manual command that sets `WECOM_CLI_CONFIG_DIR` — keep that prefix, or `npx --yes @wecom/cli auth init --manual` writes to `~/.config/wecom`, which the plugin never reads. Do not run `auth init` from the agent (that creates a new bot).
 
 ## Persona
 
@@ -205,7 +207,8 @@ Trigger (paths relative to `workspace`):
 
 ## Known Limitations and Deferred Work
 
-- wecom-cli credentials live in the workspace `<workspace>/.dsh/wecom-cli` (`WECOM_CLI_CONFIG_DIR`; gitignore it). Once enabled, `~/.config/wecom` is unused. People on `wecomCli.allowFrom` borrow that identity’s office permissions; the chat list (root `allowFrom`) does not grant office access. PATH stays process-wide and does not stop `pwsh wecom-cli`. The office catalog is registered only on the office 1:1 agent; group chats do not get it. This is not a sandbox.
+- wecom-cli credentials live in the workspace `<workspace>/.dsh/wecom-cli` (gitignore it). People on `wecomCli.allowFrom` borrow that identity’s office permissions; the chat list (root `allowFrom`) does not grant office access. An office 1:1 may still send to any `--chat-id`; the plugin does not pin recipients.
+- Gating is not a sandbox. The `wecom_cli` tool and `wecomcli-*` register only on the office 1:1 agent, PATH resolves `wecom-cli` to a refusal, and the credential directory reaches only the plugin's own spawns — but a shell in the same process can still bypass all of it: run `node <absolute path to @wecom/cli's wecom.js>`, or `npx --yes @wecom/cli` with a self-set `WECOM_CLI_CONFIG_DIR`. Without that variable such a bypass lands on the unauthorized `~/.config/wecom`. Real isolation needs a process sandbox.
 - The WeCom channel has no GUI confirmation dialog. Irreversible actions (send mail, cancel a meeting, delete a todo, overwrite a document) are constrained only by the prompt (run `--dry-run` first, wait for the next user message). `ask_user_question` hangs until the task times out on this channel.
 - Leftover `wecomcli-*` folders in workspace `.dsh/skills` / `.agents/skills` remain visible to every agent with that cwd, including GUI. Other skills are unchanged. `enabled: false` only turns off WeCom-side PATH / auth / prompt / registration.
 

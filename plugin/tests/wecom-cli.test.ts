@@ -6,13 +6,21 @@ import { test } from 'node:test'
 import { strToU8, zipSync } from 'fflate'
 import {
   ALLOW_FROM_REQUIRED_MESSAGE,
-  AUTH_INIT_FAILED_MESSAGE,
-  AUTH_INIT_HINT,
+  AUTH_INIT_COMMAND,
   AUTH_INIT_MISSING_MESSAGE,
   SKILLS_SERVICE_MISSING_MESSAGE,
+  TOOLS_SERVICE_MISSING_MESSAGE,
+  WECOM_CHANNEL_PROMPT,
   WECOM_CLI_NO_OFFICE_PROMPT,
   WECOM_CLI_PROMPT,
+  WECOM_CLI_SHIM_DENY_MESSAGE,
+  WECOM_CLI_SKILL_PREFIX,
+  WECOM_CLI_TOOL_NAME,
   WORKSPACE_WECOMCLI_LEAK_MESSAGE,
+  argvForbiddenAuth,
+  authInitFailedMessage,
+  authInitHint,
+  clipOutput,
   countWecomcliSkills,
   countWorkspaceWecomcliLeaks,
   DEFAULT_MANAGED_SKILLS_DIR,
@@ -27,18 +35,24 @@ import {
   authInitArgv,
   parseAuthStatus,
   parseSkillMarkdown,
+  parseWecomCliArgs,
   probeAuth,
+  registerWecomCliTool,
   registerWecomOfficeSkills,
+  renderWecomCliRun,
   resolveConfigDir,
   resolveDshHome,
   resolveSkillsDir,
   resolveWecomBinFromPackage,
+  runWecomCli,
   senderHasOfficeAccess,
   shouldEnableWecomCli,
   shouldInjectWecomOfficeSkills,
   skillsInstallHint,
   toRuntimeSkillRegistration,
   trySeedAuth,
+  wecomCliEnv,
+  wecomCliToolDefinition,
   WECOM_CLI_CONFIG_DIR_ENV,
   WecomSkillsInstallError,
   workspaceWecomcliLeakRoots,
@@ -225,9 +239,11 @@ test('toRuntimeSkillRegistration maps wecomcli-* and skips other names', () => {
     name: 'wecomcli-shared',
     description: 'shared',
     source: 'runtime',
-    content: 'body',
+    content: `${WECOM_CLI_SKILL_PREFIX}\n\nbody`,
     resourceBase: { kind: 'directory', path: '/skills/wecomcli-shared' },
   })
+  assert.match(WECOM_CLI_SKILL_PREFIX, new RegExp(WECOM_CLI_TOOL_NAME))
+  assert.match(WECOM_CLI_SKILL_PREFIX, /禁止用 pwsh\/bash\/npx/)
   assert.equal(toRuntimeSkillRegistration({
     name: 'v4l2-frame-capture',
     description: 'cam',
@@ -275,17 +291,25 @@ test('resolveConfigDir defaults to workspace .dsh/wecom-cli and resolves relativ
   assert.equal(resolveConfigDir(join('.dsh', 'extra-cli'), workspace), resolve(workspace, '.dsh', 'extra-cli'))
 })
 
-test('ensureConfigDir creates the directory and sets WECOM_CLI_CONFIG_DIR', () => {
+test('ensureConfigDir creates the directory and exports nothing', () => {
   const root = scratch('config-dir')
   const dir = join(root, '.dsh', 'wecom-cli')
-  const env: NodeJS.ProcessEnv = {}
+  const before = process.env[WECOM_CLI_CONFIG_DIR_ENV]
   try {
-    assert.equal(ensureConfigDir(dir, env), dir)
+    assert.equal(ensureConfigDir(dir), dir)
     assert.equal(existsSync(dir), true)
-    assert.equal(env[WECOM_CLI_CONFIG_DIR_ENV], dir)
+    assert.equal(process.env[WECOM_CLI_CONFIG_DIR_ENV], before)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('wecomCliEnv injects the credential directory without mutating the base', () => {
+  const base: NodeJS.ProcessEnv = { PATH: '/bin' }
+  const env = wecomCliEnv('/creds', base)
+  assert.equal(env[WECOM_CLI_CONFIG_DIR_ENV], '/creds')
+  assert.equal(env.PATH, '/bin')
+  assert.equal(base[WECOM_CLI_CONFIG_DIR_ENV], undefined)
 })
 
 test('skillsInstallHint names the managed skills directory and not --dir', () => {
@@ -408,33 +432,37 @@ test('resolveWecomBinFromPackage reads the bin field', () => {
   }
 })
 
-test('writeWecomShim writes a Windows cmd that points at binJs', () => {
-  const root = scratch('shim-win')
+test('writeWecomShim denies instead of forwarding to the launcher', () => {
+  const root = scratch('shim')
   mkdirSync(root, { recursive: true })
-  const binJs = join(root, 'wecom.js')
-  writeFileSync(binJs, 'ok', 'utf8')
   const shimDir = join(root, 'bin')
   try {
-    writeWecomShim(shimDir, binJs, 'win32', 'C:\\nodejs\\node.exe')
+    writeWecomShim(shimDir, 'win32')
     const cmd = readFileSync(join(shimDir, 'wecom-cli.cmd'), 'utf8')
-    assert.match(cmd, /C:\\nodejs\\node\.exe/)
-    assert.match(cmd, /wecom\.js/)
-    assert.match(cmd, /%/)
+    assert.match(cmd, new RegExp(WECOM_CLI_SHIM_DENY_MESSAGE.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    assert.match(cmd, /exit \/b 1/)
+    assert.doesNotMatch(cmd, /wecom\.js/)
+
+    writeWecomShim(shimDir, 'linux')
+    const posix = readFileSync(join(shimDir, 'wecom-cli'), 'utf8')
+    assert.match(posix, /exit 1/)
+    assert.doesNotMatch(posix, /wecom\.js/)
+    // A .cmd echoes its own bytes; non-ASCII would garble under a legacy code page.
+    assert.doesNotMatch(WECOM_CLI_SHIM_DENY_MESSAGE, /[^\x20-\x7e]/)
+    assert.match(WECOM_CLI_SHIM_DENY_MESSAGE, new RegExp(WECOM_CLI_TOOL_NAME))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 })
 
-test('ensureOnPath prepends a shim when wecom-cli is missing', () => {
+test('ensureOnPath prepends the deny shim', () => {
   const root = scratch('path')
   mkdirSync(root, { recursive: true })
   const dshHome = join(root, 'dsh')
-  const binJs = join(root, 'wecom.js')
-  writeFileSync(binJs, 'ok', 'utf8')
   const env: NodeJS.ProcessEnv = { PATH: join(root, 'nowhere') }
   try {
-    const result = ensureOnPath(binJs, { dshHome, env, platform: 'win32', execPath: 'C:\\nodejs\\node.exe' })
-    assert.equal(result.alreadyOnPath, false)
+    const result = ensureOnPath({ dshHome, env, platform: 'win32' })
+    assert.equal(result.shadowed, false)
     assert.equal(result.shimDir, join(dshHome, 'wecom-cli-bin'))
     assert.equal(existsSync(join(dshHome, 'wecom-cli-bin', 'wecom-cli.cmd')), true)
     assert.ok(env.PATH?.startsWith(join(dshHome, 'wecom-cli-bin')))
@@ -443,24 +471,17 @@ test('ensureOnPath prepends a shim when wecom-cli is missing', () => {
   }
 })
 
-test('ensureOnPath reuses an existing wecom-cli on PATH', () => {
+test('ensureOnPath shadows an existing wecom-cli on PATH', () => {
   const root = scratch('existing')
   mkdirSync(root, { recursive: true })
-  const existing = join(root, 'wecom-cli.cmd')
-  writeFileSync(existing, '@echo off\r\n', 'utf8')
+  writeFileSync(join(root, 'wecom-cli.cmd'), '@echo off\r\n', 'utf8')
+  const dshHome = join(root, 'dsh')
   const env: NodeJS.ProcessEnv = { PATH: root }
-  const binJs = join(root, 'wecom.js')
-  writeFileSync(binJs, 'ok', 'utf8')
   try {
-    const result = ensureOnPath(binJs, {
-      dshHome: join(root, 'dsh'),
-      env,
-      platform: 'win32',
-      execPath: 'C:\\nodejs\\node.exe',
-    })
-    assert.equal(result.alreadyOnPath, true)
-    assert.equal(result.shimDir, undefined)
-    assert.equal(existsSync(join(root, 'dsh', 'wecom-cli-bin')), false)
+    const result = ensureOnPath({ dshHome, env, platform: 'win32' })
+    assert.equal(result.shadowed, true)
+    assert.equal(result.shimDir, join(dshHome, 'wecom-cli-bin'))
+    assert.ok(env.PATH?.startsWith(join(dshHome, 'wecom-cli-bin')))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -473,33 +494,50 @@ test('parseAuthStatus reads the last non-empty line', () => {
   assert.equal(parseAuthStatus(''), 'error')
 })
 
-test('probeAuth runs a fake launcher and parses --status', async () => {
+test('probeAuth runs a fake launcher with the credential directory injected', async () => {
   const root = scratch('probe')
   mkdirSync(root, { recursive: true })
   const binJs = join(root, 'wecom.js')
-  writeFileSync(binJs, 'if (process.argv.includes("--status")) console.log("authorized")\n')
+  const configDir = join(root, 'creds')
+  writeFileSync(binJs, [
+    'const dir = process.env.WECOM_CLI_CONFIG_DIR',
+    'if (process.argv.includes("--status") && dir === process.argv[3]) console.log("authorized")',
+    '',
+  ].join('\n'))
   try {
-    assert.equal(await probeAuth(binJs), 'authorized')
+    // argv[3] is the first launcher argument, so the fake CLI compares the
+    // injected env with the directory the caller intended.
+    assert.equal(await probeAuth(binJs, configDir), 'error')
+    writeFileSync(binJs, [
+      'const dir = process.env.WECOM_CLI_CONFIG_DIR',
+      `if (process.argv.includes("--status") && dir === ${JSON.stringify(configDir)}) console.log("authorized")`,
+      '',
+    ].join('\n'))
+    assert.equal(await probeAuth(binJs, configDir), 'authorized')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 })
 
-test('WECOM_CLI_PROMPT forbids npm install -g, self-install, and QR auth init', () => {
-  assert.match(WECOM_CLI_PROMPT, /npm install -g @wecom\/cli/)
-  assert.match(WECOM_CLI_PROMPT, /npm i -g @wecom\/cli/)
-  assert.match(WECOM_CLI_PROMPT, /不要自行安装/)
-  assert.match(WECOM_CLI_PROMPT, /wecomCli\.enabled/)
-  assert.match(WECOM_CLI_PROMPT, /wecomCli\.allowFrom/)
-  assert.match(WECOM_CLI_PROMPT, /auth init --noninteractive/)
-  assert.match(WECOM_CLI_PROMPT, /--bot-id/)
-  assert.match(WECOM_CLI_PROMPT, /禁止扫码/)
-  assert.match(WECOM_CLI_PROMPT, /853004/)
-  assert.match(WECOM_CLI_PROMPT, /auth init --manual/)
+test('WECOM_CHANNEL_PROMPT forbids ask_user_question', () => {
+  assert.match(WECOM_CHANNEL_PROMPT, /ask_user_question/)
+  assert.match(WECOM_CHANNEL_PROMPT, /企业微信/)
 })
 
-test('WECOM_CLI_NO_OFFICE_PROMPT forbids wecom-cli', () => {
+test('WECOM_CLI_PROMPT routes office commands through the gated tool', () => {
+  assert.match(WECOM_CLI_PROMPT, /ask_user_question/)
+  assert.match(WECOM_CLI_PROMPT, new RegExp(WECOM_CLI_TOOL_NAME))
+  assert.match(WECOM_CLI_PROMPT, /pwsh\/bash\/npx\/npm/)
+  assert.match(WECOM_CLI_PROMPT, /auth init/)
+  assert.match(WECOM_CLI_PROMPT, /扫码/)
+  assert.match(WECOM_CLI_PROMPT, /853004/)
+})
+
+test('WECOM_CLI_NO_OFFICE_PROMPT forbids wecom-cli, the tool, and npx', () => {
+  assert.match(WECOM_CLI_NO_OFFICE_PROMPT, /ask_user_question/)
   assert.match(WECOM_CLI_NO_OFFICE_PROMPT, /wecom-cli/)
+  assert.match(WECOM_CLI_NO_OFFICE_PROMPT, new RegExp(WECOM_CLI_TOOL_NAME))
+  assert.match(WECOM_CLI_NO_OFFICE_PROMPT, /npx @wecom\/cli/)
   assert.match(WECOM_CLI_NO_OFFICE_PROMPT, /wecomcli-/)
   assert.match(WECOM_CLI_NO_OFFICE_PROMPT, /没有企微办公权限/)
 })
@@ -512,19 +550,26 @@ test('authInitArgv uses hidden --bot-id/--secret and never --manual', () => {
   assert.ok(!authInitArgv('bot-id', 'secret-value').includes('--noninteractive'))
 })
 
-test('AUTH_INIT_HINT is npx --manual and never names a secret', () => {
-  assert.equal(AUTH_INIT_HINT, 'npx --yes @wecom/cli auth init --manual')
-  assert.doesNotMatch(AUTH_INIT_HINT, /secret/i)
-  assert.doesNotMatch(AUTH_INIT_FAILED_MESSAGE, /secret/i)
+test('authInitHint sets the credential directory the plugin actually reads', () => {
+  const dir = 'C:\\ws\\.dsh\\wecom-cli'
+  const windows = authInitHint(dir, 'win32')
+  assert.match(windows, /^\$env:WECOM_CLI_CONFIG_DIR='C:\\ws\\\.dsh\\wecom-cli'; /)
+  assert.ok(windows.endsWith(AUTH_INIT_COMMAND))
+  const posix = authInitHint('/ws/.dsh/wecom-cli', 'linux')
+  assert.equal(posix, `WECOM_CLI_CONFIG_DIR='/ws/.dsh/wecom-cli' ${AUTH_INIT_COMMAND}`)
+  const failed = authInitFailedMessage(dir)
+  assert.match(failed, /WECOM_CLI_CONFIG_DIR/)
+  assert.match(failed, /npx --yes @wecom\/cli auth init --manual/)
+  assert.doesNotMatch(failed, /npm install -g/)
+  assert.doesNotMatch(failed, /secret/i)
   assert.doesNotMatch(AUTH_INIT_MISSING_MESSAGE, /secret/i)
-  assert.match(AUTH_INIT_FAILED_MESSAGE, /npx --yes @wecom\/cli auth init --manual/)
-  assert.doesNotMatch(AUTH_INIT_FAILED_MESSAGE, /npm install -g/)
 })
 
 test('trySeedAuth passes hidden flags to a fake launcher', async () => {
   const root = scratch('seed-ok')
   mkdirSync(root, { recursive: true })
   const binJs = join(root, 'wecom.js')
+  const configDir = join(root, 'creds')
   writeFileSync(binJs, [
     'const argv = process.argv',
     'const bot = argv.indexOf("--bot-id")',
@@ -534,11 +579,12 @@ test('trySeedAuth passes hidden flags to a fake launcher', async () => {
     '  && argv[sec + 1] === "secret-value"',
     '  && argv.includes("auth") && argv.includes("init")',
     '  && !argv.includes("--manual") && !argv.includes("--noninteractive")',
+    `  && process.env.WECOM_CLI_CONFIG_DIR === ${JSON.stringify(configDir)}`,
     'process.exit(ok ? 0 : 1)',
     '',
   ].join('\n'))
   try {
-    assert.equal(await trySeedAuth(binJs, 'bot-id', 'secret-value'), undefined)
+    assert.equal(await trySeedAuth(binJs, 'bot-id', 'secret-value', configDir), undefined)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -548,14 +594,114 @@ test('trySeedAuth returns a secret-free error when the launcher fails', async ()
   const root = scratch('seed-fail')
   mkdirSync(root, { recursive: true })
   const binJs = join(root, 'wecom.js')
+  const configDir = join(root, 'creds')
   writeFileSync(binJs, 'process.exit(1)\n')
   const secret = 'super-secret-xyz'
   try {
-    const message = await trySeedAuth(binJs, 'bot-id', secret)
-    assert.equal(message, AUTH_INIT_FAILED_MESSAGE)
+    const message = await trySeedAuth(binJs, 'bot-id', secret, configDir)
+    assert.equal(message, authInitFailedMessage(configDir))
     assert.doesNotMatch(message ?? '', new RegExp(secret))
-    assert.equal(await trySeedAuth(binJs, '', secret), AUTH_INIT_MISSING_MESSAGE)
+    assert.equal(await trySeedAuth(binJs, '', secret, configDir), AUTH_INIT_MISSING_MESSAGE)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('argvForbiddenAuth rejects re-authorization and passes business commands', () => {
+  assert.equal(argvForbiddenAuth(['message', 'aibot', 'sessions', 'list']), undefined)
+  assert.equal(argvForbiddenAuth(['auth', 'show', '--status']), undefined)
+  assert.match(argvForbiddenAuth(['auth', 'init']) ?? '', /auth init/)
+  assert.match(argvForbiddenAuth(['auth', 'init', '--manual']) ?? '', /auth init/)
+  assert.match(argvForbiddenAuth(['AUTH', 'INIT', '--noninteractive']) ?? '', /auth init/)
+  assert.match(argvForbiddenAuth(['message', 'send', '--bot-id', 'x']) ?? '', /--bot-id/)
+})
+
+test('parseWecomCliArgs demands a non-empty string array', () => {
+  assert.deepEqual(parseWecomCliArgs({ argv: ['auth', 'show'] }), ['auth', 'show'])
+  assert.throws(() => parseWecomCliArgs({}), /argv/)
+  assert.throws(() => parseWecomCliArgs({ argv: [] }), /argv/)
+  assert.throws(() => parseWecomCliArgs({ argv: 'auth show' }), /argv/)
+  assert.throws(() => parseWecomCliArgs({ argv: ['auth', 3] }), /argv/)
+  assert.throws(() => parseWecomCliArgs(undefined), /argv/)
+})
+
+test('clipOutput keeps short text and states the original byte length', () => {
+  assert.equal(clipOutput('hello', 10), 'hello')
+  const clipped = clipOutput('阿'.repeat(100), 12)
+  assert.match(clipped, /输出已截断，原始 300 字节/)
+  assert.ok(Buffer.from(clipped.split('\n')[0] ?? '', 'utf8').byteLength <= 12)
+})
+
+test('runWecomCli returns a non-zero exit as a value and injects the credential directory', async () => {
+  const root = scratch('run-cli')
+  mkdirSync(root, { recursive: true })
+  const binJs = join(root, 'wecom.js')
+  const configDir = join(root, 'creds')
+  writeFileSync(binJs, [
+    'console.log("argv:" + process.argv.slice(2).join(","))',
+    'console.log("dir:" + process.env.WECOM_CLI_CONFIG_DIR)',
+    'console.error("warned")',
+    'process.exit(3)',
+    '',
+  ].join('\n'))
+  try {
+    const run = await runWecomCli(binJs, ['message', 'aibot', 'sessions', 'list'], configDir)
+    assert.equal(run.exitCode, 3)
+    assert.match(run.stdout, /argv:message,aibot,sessions,list/)
+    assert.match(run.stdout, new RegExp(`dir:${configDir.replaceAll('\\', '\\\\')}`))
+    assert.match(run.stderr, /warned/)
+    assert.match(renderWecomCliRun(run), /\[exit code: 3\]/)
+    assert.match(renderWecomCliRun(run), /\[stderr\]/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('runWecomCli reports a missing launcher as exit 1 instead of throwing', async () => {
+  const run = await runWecomCli(join(scratch('missing'), 'wecom.js'), ['auth', 'show'], '/creds')
+  assert.equal(run.exitCode, 1)
+  assert.notEqual(run.stderr, '')
+})
+
+test('wecomCliToolDefinition declares argv, an object output schema, and a terminal card', () => {
+  const definition = wecomCliToolDefinition('/bin/wecom.js', '/creds')
+  assert.equal(definition.name, WECOM_CLI_TOOL_NAME)
+  assert.deepEqual(definition.parameters.required, ['argv'])
+  assert.deepEqual(definition.output.schema.required, ['stdout', 'stderr', 'exitCode'])
+  assert.equal((definition.output.schema as { type: string }).type, 'object')
+  assert.deepEqual(
+    definition.presentCall({ argv: ['message', 'aibot', 'sessions', 'list'] }),
+    { card: 'terminal', title: 'wecom-cli message aibot sessions list' },
+  )
+  assert.deepEqual(definition.output.render({}, { stdout: 'out', stderr: '', exitCode: 0 }), [
+    { type: 'text', text: 'out\n[exit code: 0]' },
+  ])
+})
+
+test('the gated tool refuses auth init before spawning anything', async () => {
+  const definition = wecomCliToolDefinition(join(scratch('never'), 'wecom.js'), '/creds')
+  await assert.rejects(
+    definition.execute({ argv: ['auth', 'init', '--manual'] }, { signal: new AbortController().signal }),
+    /auth init/,
+  )
+})
+
+test('registerWecomCliTool registers on agentCtx.tools and warns without the service', () => {
+  const captured: unknown[] = []
+  const agentCtx = {
+    get(name: string): unknown {
+      if (name !== 'tools') return undefined
+      return {
+        register(tool: unknown): () => void {
+          captured.push(tool)
+          return () => {}
+        },
+      }
+    },
+  }
+  assert.equal(registerWecomCliTool(agentCtx, '/bin/wecom.js', '/creds'), true)
+  assert.equal(captured.length, 1)
+  assert.equal((captured[0] as { name: string }).name, WECOM_CLI_TOOL_NAME)
+  assert.equal(registerWecomCliTool({ get: () => undefined }, '/bin/wecom.js', '/creds'), false)
+  assert.match(TOOLS_SERVICE_MISSING_MESSAGE, new RegExp(WECOM_CLI_TOOL_NAME))
 })

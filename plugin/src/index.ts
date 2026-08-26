@@ -33,13 +33,14 @@ import {
 } from './session-key.ts'
 import {
   ALLOW_FROM_REQUIRED_MESSAGE,
-  AUTH_INIT_HINT,
   IM_BRIDGE_RPC_CHANNEL,
   INSTALL_SKILLS_ENDPOINT,
   SKILLS_RPC_UNAVAILABLE_MESSAGE,
   WECOM_CLI_NO_OFFICE_PROMPT,
   WECOM_CLI_PROMPT,
+  WECOM_CLI_TOOL_NAME,
   WORKSPACE_WECOMCLI_LEAK_MESSAGE,
+  authInitHint,
   countWecomcliSkills,
   countWorkspaceWecomcliLeaks,
   ensureConfigDir,
@@ -47,6 +48,7 @@ import {
   installOfficialWecomSkills,
   loadWecomSkills,
   probeAuth,
+  registerWecomCliTool,
   registerWecomOfficeSkills,
   resolveConfigDir,
   resolveSkillsDir,
@@ -220,6 +222,8 @@ interface ChatState {
   wecomPromptInstalled: boolean
   /** wecomcli-* already registered on this Agent. */
   officeSkillsRegistered: boolean
+  /** The gated `wecom_cli` tool already registered on this Agent. */
+  officeToolRegistered: boolean
   queue: Promise<unknown>
   lastActivity: string
   activityClearAt: number
@@ -234,6 +238,7 @@ function emptyChatState(): ChatState {
     office: false,
     wecomPromptInstalled: false,
     officeSkillsRegistered: false,
+    officeToolRegistered: false,
     queue: Promise.resolve(),
     lastActivity: '',
     activityClearAt: 0,
@@ -498,6 +503,36 @@ export function apply(ctx: Context, config: Config): void {
   const chats = new Map<string, ChatState>()
   let wecomCliReady = false
   let officeSkills: WecomSkill[] = []
+  /** Launcher and credential directory the gated tool spawns with; set once wecom-cli is usable. */
+  let officeCli: { binJs: string; configDir: string } | undefined
+
+  /**
+   * Install the office layer on one Agent: wecomcli-* skills and the gated
+   * `wecom_cli` tool. Both register through the Agent's own context, so a group
+   * chat or the GUI never sees them. Idempotent per Agent, and retried on each
+   * inbound message because skills can arrive from the Settings button later.
+   */
+  function installOfficeLayer(agentCtx: Context, st: ChatState): void {
+    if (!wecomCliReady) return
+    if (!shouldInjectWecomOfficeSkills(st.kind, st.office)) return
+    if (!st.officeSkillsRegistered) {
+      const count = registerWecomOfficeSkills(agentCtx, officeSkills)
+      if (count > 0) {
+        st.officeSkillsRegistered = true
+        console.log(`[im-bridge] 已在该 Agent 注册 ${String(count)} 个 wecomcli-*`)
+      }
+    }
+    if (st.officeToolRegistered || officeCli === undefined) return
+    try {
+      st.officeToolRegistered = registerWecomCliTool(agentCtx, officeCli.binJs, officeCli.configDir)
+      if (st.officeToolRegistered) {
+        console.log(`[im-bridge] 已在该 Agent 注册 ${WECOM_CLI_TOOL_NAME} 工具`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[im-bridge] 注册 ${WECOM_CLI_TOOL_NAME} 失败: ${message}`)
+    }
+  }
 
   ctx.inject(['connection'], (bound) => {
     const rpc = (bound.get('connection') as { rpc?: HostConnectionRpc } | undefined)?.rpc
@@ -525,13 +560,7 @@ export function apply(ctx: Context, config: Config): void {
           officeSkills = loadWecomSkills(result.dest).filter(skill => skill.name.startsWith('wecomcli-'))
           for (const st of chats.values()) {
             if (st.agent === undefined) continue
-            if (!shouldInjectWecomOfficeSkills(st.kind, st.office)) continue
-            if (st.officeSkillsRegistered) continue
-            const count = registerWecomOfficeSkills(st.agent.ctx, officeSkills)
-            if (count > 0) {
-              st.officeSkillsRegistered = true
-              console.log(`[im-bridge] 安装后补注册 ${String(count)} 个 wecomcli-*`)
-            }
+            installOfficeLayer(st.agent.ctx, st)
           }
           console.log(`[im-bridge] 已安装 ${String(result.count)} 个 wecomcli-* 到 ${result.dest}`)
           return { ok: true, value: result }
@@ -582,24 +611,23 @@ export function apply(ctx: Context, config: Config): void {
           console.warn('[im-bridge] 未找到 @wecom/cli 二进制，办公命令不可用。请确认插件依赖已安装。')
         } else {
           const configDir = ensureConfigDir(resolveConfigDir(wecomCli.configDir, cfg().workspace))
+          officeCli = { binJs, configDir }
           console.log(`[im-bridge] wecom-cli 凭证目录: ${configDir}`)
-          const pathResult = ensureOnPath(binJs)
-          if (pathResult.alreadyOnPath) {
-            console.log('[im-bridge] PATH 上已有 wecom-cli')
-          } else if (pathResult.shimDir !== undefined) {
-            console.log(`[im-bridge] 已把 wecom-cli shim 加入 PATH: ${pathResult.shimDir}`)
-          }
-          let status = await probeAuth(binJs)
+          const pathResult = ensureOnPath()
+          console.log(
+            `[im-bridge] PATH 上的 wecom-cli 已改为拒绝执行: ${pathResult.shimDir}${pathResult.shadowed ? '（已遮蔽另一个 wecom-cli）' : ''}`,
+          )
+          let status = await probeAuth(binJs, configDir)
           if (status === 'unauthorized') {
-            if ((await trySeedAuth(binJs, cfg().botId, cfg().secret)) === undefined) {
-              status = await probeAuth(binJs)
+            if ((await trySeedAuth(binJs, cfg().botId, cfg().secret, configDir)) === undefined) {
+              status = await probeAuth(binJs, configDir)
             }
           }
           if (status === 'authorized') {
             console.log('[im-bridge] wecom-cli 已授权')
           } else if (status === 'unauthorized') {
             console.warn(
-              `[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${AUTH_INIT_HINT}（输入同一套密钥，不要全局安装）。`,
+              `[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${authInitHint(configDir)}（输入同一套密钥，不要全局安装）。`,
             )
           } else {
             console.warn('[im-bridge] wecom-cli auth show 失败。')
@@ -701,31 +729,26 @@ export function apply(ctx: Context, config: Config): void {
         const message = error instanceof Error ? error.message : String(error)
         console.warn(`[im-bridge] 人设段未覆盖（可能已由 preset 注册）: ${message}`)
       }
-      if (wecomCliReady) {
-        try {
-          prompt.section({
-            name: 'channel:wecom-cli',
-            order: 1,
-            text: () => st.office ? WECOM_CLI_PROMPT : WECOM_CLI_NO_OFFICE_PROMPT,
-          })
-          console.log(
-            `[im-bridge] 已注入企微提示词 office=${String(st.office)} kind=${st.kind ?? '?'}`,
-          )
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          console.error(`[im-bridge] 注入企微提示词失败: ${message}`)
-        }
+      try {
+        prompt.section({
+          name: 'channel:wecom-cli',
+          order: 1,
+          // Re-read per request: a group Agent is shared, and its sender —
+          // hence `st.office` — changes message to message. Only an office
+          // 1:1 gets the tool, so only it may get the office prompt.
+          // Always inject: WeCom has no GUI even when wecomCli is off.
+          text: () => wecomCliReady && shouldInjectWecomOfficeSkills(st.kind, st.office)
+            ? WECOM_CLI_PROMPT
+            : WECOM_CLI_NO_OFFICE_PROMPT,
+        })
+        console.log(
+          `[im-bridge] 已注入企微提示词 office=${String(st.office)} kind=${st.kind ?? '?'}`,
+        )
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[im-bridge] 注入企微提示词失败: ${message}`)
       }
       st.wecomPromptInstalled = true
-      if (
-        wecomCliReady
-        && !st.officeSkillsRegistered
-        && shouldInjectWecomOfficeSkills(st.kind, st.office)
-      ) {
-        const count = registerWecomOfficeSkills(agentCtx, officeSkills)
-        st.officeSkillsRegistered = count > 0
-        console.log(`[im-bridge] 已在该 Agent 注册 ${String(count)} 个 wecomcli-*`)
-      }
     }
 
     async function ensureAgent(ref: WecomSessionRef): Promise<ChatState> {
@@ -736,12 +759,18 @@ export function apply(ctx: Context, config: Config): void {
       }
       st.kind = ref.kind
       if (st.agent !== undefined) {
-        if (st.sessionId === undefined || !archivedSessions().has(st.sessionId)) return st
+        if (st.sessionId === undefined || !archivedSessions().has(st.sessionId)) {
+          // Office access is decided per inbound sender, and skills can arrive
+          // from the Settings button after this Agent was created.
+          installOfficeLayer(st.agent.ctx, st)
+          return st
+        }
         console.log(`[im-bridge] 会话 ${st.sessionId} 已归档，改开新会话`)
         st.agent = undefined
         st.sessionId = undefined
         st.wecomPromptInstalled = false
         st.officeSkillsRegistered = false
+        st.officeToolRegistered = false
       }
 
       const persistence = ctx.get('sessionPersistence') as SessionPersistence | undefined
@@ -762,6 +791,7 @@ export function apply(ctx: Context, config: Config): void {
           console.warn('[im-bridge] Agent 没有 ctx，无法注入企微提示词')
         } else {
           installWecomChannel(agent.ctx, st)
+          installOfficeLayer(agent.ctx, st)
         }
         void unpinLegacyWecomTitle(agent)
         const cwd = agent.session.header?.cwd ?? stored?.cwd

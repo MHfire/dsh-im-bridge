@@ -133,7 +133,9 @@ thinking:
 
 ## 企业微信办公能力（wecom-cli）
 
-插件依赖官方 [`@wecom/cli`](https://www.npmjs.com/package/@wecom/cli) 二进制。`wecomcli-*` 装在 **`$DSH_HOME/wecom-cli-skills`**（不要装进工作区 `.dsh/skills` / `.agents/skills`，也不要装进 `$DSH_HOME/skills`）。插件只在**办公 userid 的单聊** Agent 上 `skills.register()` 注入 catalog；群聊共用 Agent 本轮不注入。工作区里其它 skill 仍由 `skill-filesystem` 发现，不受影响。模型通过 preset 已有的 `pwsh` / `bash` 调用 `wecom-cli`，插件不另注册工具。
+插件依赖官方 [`@wecom/cli`](https://www.npmjs.com/package/@wecom/cli) 二进制。`wecomcli-*` 装在 **`$DSH_HOME/wecom-cli-skills`**（不要装进工作区 `.dsh/skills` / `.agents/skills`，也不要装进 `$DSH_HOME/skills`）。插件只在**办公 userid 的单聊** Agent 上注入：`skills.register()` 装 catalog，`tools.register()` 装门控工具 `wecom_cli`。两者都走该 Agent 自己的 ctx，群聊与 GUI 看不到。工作区里其它 skill 仍由 `skill-filesystem` 发现，不受影响。
+
+办公命令**只经 `wecom_cli` 工具执行**：模型传 `argv`（`wecom-cli` 之后的参数数组），插件直接 spawn 官方二进制，并拒绝任何 `auth init`。PATH 上的 `wecom-cli` 是一个只打印拒绝信息并 `exit 1` 的 shim，所以群聊、GUI 以及任何 `pwsh wecom-cli` 都跑不通；shim 的文案会指回 `wecom_cli`。凭证目录不进程级导出，只在插件自己 spawn 时注入。
 
 `wecomCli.enabled` 默认关闭。开启 PATH 须同时配置非空 **`wecomCli.allowFrom`**（办公 userid）；根级 `allowFrom` 只管谁能聊天，空名单表示所有人可问诊断。办公名单为空时插件会告警并跳过 PATH / 授权。
 
@@ -157,12 +159,12 @@ thinking:
 
 | 字段 | 说明 |
 |---|---|
-| `wecomCli.enabled` | 给企微 Agent 接上 PATH / 授权检查 / prompt；默认 `false` |
-| `wecomCli.allowFrom` | 允许调用 wecom-cli 的 userid；空则跳过 PATH / 授权。与根级聊天名单独立 |
+| `wecomCli.enabled` | 装 PATH 拒绝 shim、跑授权检查、给企微 Agent 接上 prompt 与 `wecom_cli` 工具；默认 `false` |
+| `wecomCli.allowFrom` | 能拿到 `wecom_cli` 工具的 userid；空则跳过 shim / 授权。与根级聊天名单独立 |
 | `wecomCli.skillsDir` | 覆盖 skills 根目录；空 = `$DSH_HOME/wecom-cli-skills` |
-| `wecomCli.configDir` | 覆盖凭证目录（`WECOM_CLI_CONFIG_DIR`）；空 = `<workspace>/.dsh/wecom-cli`。请把该目录加入 gitignore。启用后不再使用 `~/.config/wecom`。 |
+| `wecomCli.configDir` | 覆盖凭证目录；空 = `<workspace>/.dsh/wecom-cli`。请把该目录加入 gitignore。`WECOM_CLI_CONFIG_DIR` 只在插件 spawn CLI 时注入，不写进程环境，因此不会使用 `~/.config/wecom`。 |
 
-改 `wecomCli` 后须重启进程。未授权时插件仍收消息；启动时用隐藏的 `--bot-id/--secret`（stderr 非 TTY）写入凭据。若自动写入失败，日志会提示在 host 终端执行 `npx --yes @wecom/cli auth init --manual`（同一套密钥，不要全局安装）。凭证写在工作区 `.dsh/wecom-cli/`（须 gitignore），不写 `~/.config/wecom`。禁止在 Agent 里扫码 `auth init --noninteractive`（会新建机器人）。
+改 `wecomCli` 后须重启进程。未授权时插件仍收消息；启动时用隐藏的 `--bot-id/--secret`（stderr 非 TTY）写入凭据。若自动写入失败，日志会打印一条带 `WECOM_CLI_CONFIG_DIR` 的手动命令——必须带上它，否则 `npx --yes @wecom/cli auth init --manual` 会把凭证写到 `~/.config/wecom`，插件读不到。禁止在 Agent 里扫码 `auth init`（会新建机器人）。
 
 ## 人设（persona）
 
@@ -205,7 +207,8 @@ Agent 的最终回复若包含指向**工作区内** PNG 的 Markdown，桥会�
 
 ## Known Limitations and Deferred Work
 
-- wecom-cli 凭证在工作区 `<workspace>/.dsh/wecom-cli`（`WECOM_CLI_CONFIG_DIR`；请 gitignore）。启用后不再使用 `~/.config/wecom`。`wecomCli.allowFrom` 里的人借用这份凭据的办公权限；聊天名单（根级 `allowFrom`）不授予办公。PATH 仍是进程级，拦不住 `pwsh wecom-cli`。办公 catalog 只注册到办公单聊 Agent；群聊不注入。这不是沙箱。
+- wecom-cli 凭证在工作区 `<workspace>/.dsh/wecom-cli`（请 gitignore）。`wecomCli.allowFrom` 里的人借用这份凭据的办公权限；聊天名单（根级 `allowFrom`）不授予办公。办公单聊仍可向任意 `--chat-id` 发信，插件不锁定收件人。
+- 门控不是沙箱。`wecom_cli` 工具与 `wecomcli-*` 只注册到办公单聊 Agent，PATH 上的 `wecom-cli` 一律拒绝，凭证目录也只在插件自己 spawn 时注入；但同进程的 shell 仍可绕过：直接 `node <@wecom/cli 的 wecom.js 绝对路径>`，或 `npx --yes @wecom/cli` 并自行设置 `WECOM_CLI_CONFIG_DIR`。不设该变量时这类旁路会落到未授权的 `~/.config/wecom`。真正的隔离需要进程级沙箱。
 - 企微通道没有 GUI 审批框：发信、取消会议、删待办、覆盖文档等不可逆操作只靠 prompt 约束（先 `--dry-run`，等用户下一条确认）。`ask_user_question` 在此通道会挂到超时。
 - 工作区 `.dsh/skills` / `.agents/skills` 里残留的 `wecomcli-*` 仍会被同 cwd 的 GUI 和群聊发现。其它 skill 不受影响。`enabled: false` 只关企微侧 PATH / 授权 / prompt / 注册。
 
