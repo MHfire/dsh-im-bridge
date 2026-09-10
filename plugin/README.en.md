@@ -6,7 +6,7 @@ WeCom AI Bot ⇄ DeepSeek Harness Agent bridge — a **DSH plugin**.
 
 Creates Agents **in-process** inside a dsh profile (no child-process spawn): one durable DSH session **per WeCom chat window** (1:1 = that user; everyone in the same group shares one session — a person’s DM and group chats stay separate), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`botId` / `secret`, allow-list, timeouts, copy, and model overrides, written to `settings.yaml`).
 
-The Host half registers the `im-bridge` namespace through `installSettingsSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. The card can set `botId` / `secret` on the same user layer as the profile patch. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
+The Host half registers the `im-bridge` namespace through `ctx.settings.installSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. The card can set `botId` / `secret` on the same user layer as the profile patch. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
 
 ## Session granularity
 

@@ -4,7 +4,7 @@
  * Function-plugin shape (`name` / `inject` / `Config` / `apply`, no default
  * export). Messages create in-process Agents so per-chat-window sessions stay on
  * the same Loader tree as the Web GUI. Settings register through
- * `installSettingsSection`; live fields read `source()`, credentials still
+ * `ctx.settings.installSection`; live fields read `source()`, credentials still
  * require a process restart to open the WebSocket.
  */
 
@@ -16,7 +16,8 @@ import z from '@deepseek-ai/schemastery'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+// Type-only: the ctx.settings Context merge; the section installs through the service.
+import type {} from '@deepseek-ai/dsh-settings'
 import {
   collectReplyPngs,
   resolveChatId,
@@ -81,10 +82,10 @@ const DEFAULT_PERSONA_ZH = join(PACKAGE_ROOT, 'persona.default.md')
 /** Built-in English persona. */
 const DEFAULT_PERSONA_EN = join(PACKAGE_ROOT, 'persona.default.en.md')
 /** Host locale settings namespace (`dsh-client-locale`). */
-const LOCALE_SETTINGS_NS = settingsNamespace('locale')
+const LOCALE_SETTINGS_NS = 'locale'
 
 /** Settings namespace paired with the browser card. */
-export const IM_BRIDGE_NS = settingsNamespace('im-bridge')
+export const IM_BRIDGE_NS = 'im-bridge'
 
 /** Cordis diagnostic name. */
 export const name = 'im-bridge'
@@ -340,8 +341,27 @@ interface PromptHost {
   systemPrompt?: SystemPromptService
 }
 
+/** The read face persona / locale resolution needs. */
 interface SettingsReader {
-  get(ns: ReturnType<typeof settingsNamespace>): unknown
+  get(ns: string): unknown
+}
+
+/** Hooks `installSection` drives at attach, at each committed change, and at detach. */
+interface SettingsSectionHooks<T> {
+  setSource(current: () => T): void
+  onChange(): void
+  validate?(value: T): void
+}
+
+/** `ctx.settings` members this plugin uses, duck-typed like the other host services. */
+interface SettingsService extends SettingsReader {
+  installSection<T>(
+    owner: Context,
+    ns: string,
+    schema: z<T>,
+    entry: T,
+    hooks: SettingsSectionHooks<T>,
+  ): void
 }
 
 interface LoaderTree {
@@ -487,15 +507,18 @@ export function apply(ctx: Context, config: Config): void {
 
   let source = (): Config => config
   let settings: SettingsReader | undefined
-  installSettingsSection(ctx, IM_BRIDGE_NS, Config, config, {
-    setSource: (current) => { source = current },
-    onChange: () => {
-      // Live fields are read through source() on the next handle/ensureAgent.
-      // botId/secret still require a process restart to open the WebSocket.
-    },
-  })
   ctx.inject(['settings'], (settingsCtx) => {
-    settings = settingsCtx.settings as SettingsReader
+    const provider = settingsCtx.settings as SettingsService
+    // The owner is this plugin's own ctx, not the injected one: the provider
+    // reads it to tell its own detach from this plugin unloading.
+    provider.installSection(ctx, IM_BRIDGE_NS, Config, config, {
+      setSource: (current) => { source = current },
+      onChange: () => {
+        // Live fields are read through source() on the next handle/ensureAgent.
+        // botId/secret still require a process restart to open the WebSocket.
+      },
+    })
+    settings = provider
     settingsCtx.effect(() => () => { settings = undefined }, 'im-bridge: settings reader')
   })
   const cfg = (): Config => source()

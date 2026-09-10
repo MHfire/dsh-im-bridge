@@ -6,7 +6,7 @@
 
 在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：按**企微窗口**拆分持久会话（单聊 = 该用户一条；同一群里所有人共用一条；同一个人的私聊和群聊互不串上下文），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`botId` / `secret`、白名单、超时、提示语、模型覆盖，写入 `settings.yaml`）。
 
-Host 通过 `installSettingsSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。卡片可填 `botId` / `secret`，与 profile patch 写入同一用户层；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
+Host 通过 `ctx.settings.installSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。卡片可填 `botId` / `secret`，与 profile patch 写入同一用户层；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
 
 ## 会话粒度
 
