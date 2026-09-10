@@ -31,7 +31,8 @@
   "scripts": {
     "build": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts",
     "prepare": "tsdown --config tsdown.host.ts && tsdown --config tsdown.client.ts",
-    "test": "node --experimental-strip-types --test tests/reply-images.test.ts tests/session-key.test.ts tests/wecom-cli.test.ts"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "npm run typecheck && node --experimental-strip-types --test tests/reply-images.test.ts tests/session-key.test.ts tests/wecom-cli.test.ts"
   },
   "dsh": {
     "bundle": {
@@ -83,9 +84,11 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "lightningcss": "^1.32.0",
     "react": "^18.2.0",
-    "tsdown": "^0.22.2"
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
   }
 }

@@ -66,6 +66,8 @@ dsh plugin --profile web add <package-path>
 If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them on the Settings plugin card (see the next section).
 
 ## Settings plugin card
+`npm test` runs `npm run typecheck` first. That check resolves `@deepseek-ai/*` through the `paths` in [tsconfig.typecheck.json](tsconfig.typecheck.json), pointing at the **built** `lib/types` of a sibling `../deepseek-harness` checkout, so a harness change to a service or event contract fails here instead of at boot. Local development therefore needs that checkout next to this repository, built with `pnpm run build`. Neither `npm run build` nor `npm pack` depends on it.
+
 
 After the plugin is installed and `dsh web` is running, open **Settings → Plugins → Plugin configuration** and expand **WeCom Bridge** (same card chrome as Shell / Agent loop / Web search). **Save** writes the user layer of `settings.yaml`, the same layer as the profile `cordis.patch.yml`. **Discard** drops unsaved drafts. Fields marked **Overridden** can be **Reset** to the bundle default.
 

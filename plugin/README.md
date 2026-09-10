@@ -66,6 +66,8 @@ dsh plugin --profile web add <本包路径>
 未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在 Settings 插件配置卡填写（见下节）。
 
 ## Settings 插件配置卡
+`npm test` 先跑 `npm run typecheck`，它按 [tsconfig.typecheck.json](tsconfig.typecheck.json) 的 `paths` 解析 `@deepseek-ai/*`，指向同级 `../deepseek-harness` 中**已构建**的 `lib/types`——harness 改动服务与事件契约时，漂移在这里就会报错，而不是等到 boot 崩溃。因此本地开发需要把 harness 检出在插件仓库旁边并先 `pnpm run build`。`npm run build` 与 `npm pack` 不依赖它。
+
 
 安装插件并启动 `dsh web` 后，打开 **设置 → 插件 → 插件配置**，展开 **企业微信桥接**（与「终端 / Agent 循环 / 网页搜索」同一组卡片）。改完点右下角 **保存** 写入 `settings.yaml` 用户层，与 profile `cordis.patch.yml` 同一层；**放弃** 丢掉未保存草稿。带「已覆盖」的字段可 **重置** 回 bundle 默认。
 

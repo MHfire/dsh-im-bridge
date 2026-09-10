@@ -13,11 +13,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, type ModelSelection } from '@deepseek-ai/dsh-agent'
 // Type-only: the ctx.settings Context merge; the section installs through the service.
 import type {} from '@deepseek-ai/dsh-settings'
+// Type-only: the 'session/title' SessionEventMap merge this bridge reads and appends.
+import type {} from '@deepseek-ai/dsh-session-title'
 import {
   collectReplyPngs,
   resolveChatId,
@@ -176,7 +178,8 @@ export const Config: z<Config> = z.object({
 interface LoggedEvent {
   seq: number
   type: string
-  data: Record<string, unknown>
+  /** Per-type payload; each reader narrows it to the event it handles. */
+  data: unknown
 }
 
 interface TextBlock {
@@ -208,7 +211,7 @@ interface LiveAgent {
   ctx: Context
   session: {
     seq: number
-    events: readonly LoggedEvent[]
+    snapshotEvents(): readonly LoggedEvent[]
     header?: { cwd?: string; agentPreset?: string }
   }
 }
@@ -264,7 +267,7 @@ interface HostConnectionRpc {
 }
 
 interface DefaultModel {
-  currentSelection(): { provider: string; model: string; reasoningEffort?: string }
+  currentSelection(): ModelSelection
 }
 
 interface AgentRegistry {
@@ -312,7 +315,7 @@ interface SessionTitleService {
 
 interface TitledSession {
   id: string
-  events: readonly LoggedEvent[]
+  snapshotEvents(): readonly LoggedEvent[]
   append(type: 'session/title', data: {
     title: string
     messageSeqs: number[]
@@ -409,7 +412,7 @@ function summarize(events: readonly LoggedEvent[], firstSeq: number): { text: st
         .join('')
       if (joined !== '') text = joined
     }
-    if (event.type === 'turn/end') reason = event.data.reason
+    if (event.type === 'turn/end') reason = (event.data as { reason?: unknown }).reason
   }
   return { text, reason }
 }
@@ -420,7 +423,7 @@ function summarize(events: readonly LoggedEvent[], firstSeq: number): { text: st
  * @returns the payload, or undefined when the session has no title event.
  */
 function latestTitleData(session: TitledSession): SessionTitleEventData | undefined {
-  const events = session.events
+  const events = session.snapshotEvents()
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]
     if (event.type === 'session/title') return event.data as SessionTitleEventData
@@ -479,12 +482,14 @@ function resolvePersona(config: Config, settings: SettingsReader | undefined): s
 function resolveSelection(
   config: Config,
   defaultModel: DefaultModel,
-): { provider: string; model: string; reasoningEffort?: string } {
+): ModelSelection {
   const provider = config.provider.trim()
   const model = config.model.trim()
   if (provider !== '' && model !== '') {
     const effort = config.reasoningEffort.trim()
-    return effort === '' ? { provider, model } : { provider, model, reasoningEffort: effort }
+    return effort === ''
+      ? { provider, model }
+      : { provider, model, reasoningEffort: ReasoningEffortId(effort) }
   }
   if (provider !== '' || model !== '') {
     console.warn('[im-bridge] provider/model 需同时填写才覆盖企微模型, 已回退 agent-default-model。')
@@ -493,17 +498,27 @@ function resolveSelection(
 }
 
 /**
+ * Read a Host service this bridge cannot run without.
+ * @param ctx - host plugin context.
+ * @param name - service name in the global service store.
+ * @returns the service value.
+ * @throws when the composition does not provide the service.
+ */
+function requireService<T>(ctx: Context, name: string): T {
+  const service = ctx.get(name) as T | undefined
+  if (service === undefined) throw new Error(`im-bridge: 需要 ${name} 服务`)
+  return service
+}
+
+/**
  * Mount the WeCom bridge: settings namespace, then a deferred WebSocket after Loader settle.
  * @param ctx - host plugin context.
  * @param config - composition entry used as the settings `base` layer.
  */
 export function apply(ctx: Context, config: Config): void {
-  const agents = ctx.get('agents') as AgentRegistry | undefined
-  const sessions = ctx.get('sessions') as SessionStore | undefined
-  const defaultModel = ctx.get('agentDefaultModel') as DefaultModel | undefined
-  if (agents === undefined || sessions === undefined || defaultModel === undefined) {
-    throw new Error('im-bridge: 需要 agents/sessions/agentDefaultModel 服务')
-  }
+  const agents = requireService<AgentRegistry>(ctx, 'agents')
+  const sessions = requireService<SessionStore>(ctx, 'sessions')
+  const defaultModel = requireService<DefaultModel>(ctx, 'agentDefaultModel')
 
   let source = (): Config => config
   let settings: SettingsReader | undefined
@@ -919,7 +934,10 @@ export function apply(ctx: Context, config: Config): void {
       }
     })
 
-    const { default: AiBot, generateReqId } = await import('@wecom/aibot-node-sdk') as {
+    // The SDK's own WSClient types its listeners per event name; this bridge
+    // reads frames as JSON and needs one permissive `on`, so the narrowing goes
+    // through unknown rather than widening every handler to the SDK's maps.
+    const { default: AiBot, generateReqId } = await import('@wecom/aibot-node-sdk') as unknown as {
       default: { WSClient: new (options: { botId: string; secret: string }) => WecomClient }
       generateReqId: (kind: string) => string
     }
@@ -985,7 +1003,7 @@ export function apply(ctx: Context, config: Config): void {
         }))
         await st.agent.whenIdle()
         await sessions.flush(st.agent.session)
-        const outcome = summarize(st.agent.session.events, firstSeq)
+        const outcome = summarize(st.agent.session.snapshotEvents(), firstSeq)
         if (stopThinking) stopThinking()
         const ms = Date.now() - startedAt
         const body = outcome.text || '(agent 无输出)'
@@ -1074,8 +1092,8 @@ export function apply(ctx: Context, config: Config): void {
 
     ws.connect()
 
-    ctx.on('dispose', () => {
+    ctx.effect(() => () => {
       try { ws.close?.() } catch { /* already closed */ }
-    })
+    }, 'im-bridge: wecom websocket')
   })()
 }

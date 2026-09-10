@@ -3,10 +3,9 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import z from "@deepseek-ai/schemastery";
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { ReasoningEffortId, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionId } from "@deepseek-ai/dsh-session";
 import { installModelSelection } from "@deepseek-ai/dsh-agent";
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
@@ -8402,7 +8401,7 @@ async function sendFinal(ws, frame, streamId, content) {
 * Function-plugin shape (`name` / `inject` / `Config` / `apply`, no default
 * export). Messages create in-process Agents so per-chat-window sessions stay on
 * the same Loader tree as the Web GUI. Settings register through
-* `installSettingsSection`; live fields read `source()`, credentials still
+* `ctx.settings.installSection`; live fields read `source()`, credentials still
 * require a process restart to open the WebSocket.
 */
 /** Package root (persona files live beside package.json). */
@@ -8412,9 +8411,9 @@ const DEFAULT_PERSONA_ZH = join(PACKAGE_ROOT, "persona.default.md");
 /** Built-in English persona. */
 const DEFAULT_PERSONA_EN = join(PACKAGE_ROOT, "persona.default.en.md");
 /** Host locale settings namespace (`dsh-client-locale`). */
-const LOCALE_SETTINGS_NS = settingsNamespace("locale");
+const LOCALE_SETTINGS_NS = "locale";
 /** Settings namespace paired with the browser card. */
-const IM_BRIDGE_NS = settingsNamespace("im-bridge");
+const IM_BRIDGE_NS = "im-bridge";
 /** Cordis diagnostic name. */
 const name = "im-bridge";
 /** Required host services. */
@@ -8515,7 +8514,7 @@ function summarize(events, firstSeq) {
 * @returns the payload, or undefined when the session has no title event.
 */
 function latestTitleData(session) {
-	const events = session.events;
+	const events = session.snapshotEvents();
 	for (let i = events.length - 1; i >= 0; i -= 1) {
 		const event = events[i];
 		if (event.type === "session/title") return event.data;
@@ -8572,11 +8571,23 @@ function resolveSelection(config, defaultModel) {
 		} : {
 			provider,
 			model,
-			reasoningEffort: effort
+			reasoningEffort: ReasoningEffortId(effort)
 		};
 	}
 	if (provider !== "" || model !== "") console.warn("[im-bridge] provider/model 需同时填写才覆盖企微模型, 已回退 agent-default-model。");
 	return defaultModel.currentSelection();
+}
+/**
+* Read a Host service this bridge cannot run without.
+* @param ctx - host plugin context.
+* @param name - service name in the global service store.
+* @returns the service value.
+* @throws when the composition does not provide the service.
+*/
+function requireService(ctx, name) {
+	const service = ctx.get(name);
+	if (service === void 0) throw new Error(`im-bridge: 需要 ${name} 服务`);
+	return service;
 }
 /**
 * Mount the WeCom bridge: settings namespace, then a deferred WebSocket after Loader settle.
@@ -8584,20 +8595,20 @@ function resolveSelection(config, defaultModel) {
 * @param config - composition entry used as the settings `base` layer.
 */
 function apply(ctx, config) {
-	const agents = ctx.get("agents");
-	const sessions = ctx.get("sessions");
-	const defaultModel = ctx.get("agentDefaultModel");
-	if (agents === void 0 || sessions === void 0 || defaultModel === void 0) throw new Error("im-bridge: 需要 agents/sessions/agentDefaultModel 服务");
+	const agents = requireService(ctx, "agents");
+	const sessions = requireService(ctx, "sessions");
+	const defaultModel = requireService(ctx, "agentDefaultModel");
 	let source = () => config;
 	let settings;
-	installSettingsSection(ctx, IM_BRIDGE_NS, Config, config, {
-		setSource: (current) => {
-			source = current;
-		},
-		onChange: () => {}
-	});
 	ctx.inject(["settings"], (settingsCtx) => {
-		settings = settingsCtx.settings;
+		const provider = settingsCtx.settings;
+		provider.installSection(ctx, IM_BRIDGE_NS, Config, config, {
+			setSource: (current) => {
+				source = current;
+			},
+			onChange: () => {}
+		});
+		settings = provider;
 		settingsCtx.effect(() => () => {
 			settings = void 0;
 		}, "im-bridge: settings reader");
@@ -8995,7 +9006,7 @@ function apply(ctx, config) {
 				}));
 				await st.agent.whenIdle();
 				await sessions.flush(st.agent.session);
-				const outcome = summarize(st.agent.session.events, firstSeq);
+				const outcome = summarize(st.agent.session.snapshotEvents(), firstSeq);
 				if (stopThinking) stopThinking();
 				const ms = Date.now() - startedAt;
 				const body = outcome.text || "(agent 无输出)";
@@ -9068,11 +9079,11 @@ function apply(ctx, config) {
 			});
 		}));
 		ws.connect();
-		ctx.on("dispose", () => {
+		ctx.effect(() => () => {
 			try {
 				ws.close?.();
 			} catch {}
-		});
+		}, "im-bridge: wecom websocket");
 	})();
 }
 //#endregion
