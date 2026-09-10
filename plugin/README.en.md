@@ -23,15 +23,16 @@ One DSH session maps to one WeCom chat window, not “every window of the same u
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.2 is aligned to published tags by the APIs it actually calls:
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.3 is aligned to published tags by the APIs it actually calls:
 
 | DSH | This package |
 |---|---|
-| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8), [0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1), [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | Compatible (developed against the 0.1.1-rc.2 line) |
-| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) and earlier | Not compatible. rc.7 already has the plugin settings-card slot and `dsh plugin add`, but the browser has no `settingsScope.describe()`, so the card and the credential “Configured” badges fail |
-| Newer RCs / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | Compatible (the line this package is developed and verified against) |
+| 0.1.2-alpha.4 / 0.1.2-alpha.5 | All three required APIs are in place; not verified individually |
+| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) and earlier | Not compatible; pin `@mhfire/dsh-im-bridge@0.4.2` instead. These versions still ship `@deepseek-ai/dsh-client-runtime` (removed in 0.1.2-alpha.1, so the browser half reports `missed the module table`), have no `ctx.settings.installSection` (0.1.2-alpha.2), and still expose `Session.events` rather than `snapshotEvents()` (0.1.2-alpha.4) |
+| 0.1.3-alpha.x / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
 
-Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2 web`. Do not rely on a floating `latest`.
+Pin `dsh` to `0.1.2-rc.1`, for example `npx @deepseek-ai/dsh@0.1.2-rc.1 web`. Do not rely on a floating `latest`.
 
 ## Install
 
@@ -40,7 +41,7 @@ Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # Or pin a version:
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
 ```
 
 In `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile), supply credentials only (other fields ship as bundle defaults and can be overridden):
@@ -65,9 +66,9 @@ dsh plugin --profile web add <package-path>
 
 If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them on the Settings plugin card (see the next section).
 
-## Settings plugin card
 `npm test` runs `npm run typecheck` first. That check resolves `@deepseek-ai/*` through the `paths` in [tsconfig.typecheck.json](tsconfig.typecheck.json), pointing at the **built** `lib/types` of a sibling `../deepseek-harness` checkout, so a harness change to a service or event contract fails here instead of at boot. Local development therefore needs that checkout next to this repository, built with `pnpm run build`. Neither `npm run build` nor `npm pack` depends on it.
 
+## Settings plugin card
 
 After the plugin is installed and `dsh web` is running, open **Settings → Plugins → Plugin configuration** and expand **WeCom Bridge** (same card chrome as Shell / Agent loop / Web search). **Save** writes the user layer of `settings.yaml`, the same layer as the profile `cordis.patch.yml`. **Discard** drops unsaved drafts. Fields marked **Overridden** can be **Reset** to the bundle default.
 

@@ -9,7 +9,7 @@
 Connect WeCom (WeChat Work) AI Bot over a long-lived WebSocket, hand messages to a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Agent, and stream replies back to WeCom.
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.4.2-blue)
+![version](https://img.shields.io/badge/version-0.4.3-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -66,22 +66,23 @@ flowchart LR
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.4.2 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.4.3 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
 
 | DSH | This repo’s plugin |
 |---|---|
-| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8), [0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1), [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | Compatible (developed against the 0.1.1-rc.2 line) |
-| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) and earlier | Not compatible. rc.7 already has the plugin settings-card slot and `dsh plugin add`, but the browser has no `settingsScope.describe()`, so the card and the credential “Configured” badges fail |
-| Newer RCs / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | Compatible (the line the plugin is developed and verified against) |
+| 0.1.2-alpha.4 / 0.1.2-alpha.5 | All three required APIs are in place; not verified individually |
+| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) and earlier | Not compatible; pin `@mhfire/dsh-im-bridge@0.4.2` instead. These versions still ship `@deepseek-ai/dsh-client-runtime` (removed in 0.1.2-alpha.1), have no `ctx.settings.installSection` (0.1.2-alpha.2), and still expose `Session.events` (renamed to `snapshotEvents()` in 0.1.2-alpha.4) |
+| 0.1.3-alpha.x / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
 
-Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2 web`. Do not rely on a floating `latest`. Legacy `bridge.js` only needs a local `dsh` CLI and is not bound by the table above.
+Pin `dsh` to `0.1.2-rc.1`, for example `npx @deepseek-ai/dsh@0.1.2-rc.1 web`. Do not rely on a floating `latest`. Legacy `bridge.js` only needs a local `dsh` CLI and is not bound by the table above.
 
 ## Quick start
 
 ### Prerequisites
 
 - Node.js 18+ (required for legacy `bridge.js`; the plugin runs with dsh)
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.0-rc.8 or later** (see the previous section)
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-rc.1 or later** (see the previous section)
 
 ### 1. WeCom: create an AI Bot (once)
 
@@ -94,7 +95,7 @@ Pin `dsh` to `0.1.0-rc.8` or later, for example `npx @deepseek-ai/dsh@0.1.1-rc.2
 ```powershell
 # 1) Install into the target profile (e.g. web)
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
+# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
 
 # 2) In $DSH_HOME/profiles/web/cordis.patch.yml, supply credentials
 #    (other fields ship as bundle defaults; override as needed)
@@ -104,7 +105,7 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 #     secret: "<your Secret>"
 #     # optional: workspace / personaFile / …
 
-# 3) Restart dsh (pin the version, e.g. npx @deepseek-ai/dsh@0.1.1-rc.2 web)
+# 3) Restart dsh (pin the version, e.g. npx @deepseek-ai/dsh@0.1.2-rc.1 web)
 # 4) Or fill botId/secret in Settings → Plugins → Plugin configuration → WeCom Bridge, then restart
 # 5) Message the bot in WeCom
 ```

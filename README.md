@@ -9,7 +9,7 @@
 通过企业微信智能机器人的 WebSocket 长连接，把企业微信消息交给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Agent 处理，再将结果流式回复到微信。
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.4.2-blue)
+![version](https://img.shields.io/badge/version-0.4.3-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -66,22 +66,23 @@ flowchart LR
 
 ## 📌 兼容的 DeepSeek Harness 版本
 
-DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。插件 0.4.2 按实际调用的 API 对齐已发布 tag（细则见 [`plugin/README.md`](./plugin/README.md)）：
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。插件 0.4.3 按实际调用的 API 对齐已发布 tag（细则见 [`plugin/README.md`](./plugin/README.md)）：
 
 | DSH | 本仓库插件 |
 |---|---|
-| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8)、[0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1)、[0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | 可适配（对照开发的是 0.1.1-rc.2 一线） |
-| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) 及更早 | 不可适配。rc.7 已有插件配置卡槽位和 `dsh plugin add`，但浏览器没有 `settingsScope.describe()`，配置卡加载和凭证「已配置」徽章会失败 |
-| 更新的 RC / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | 可适配（对照开发与验证的一线） |
+| 0.1.2-alpha.4 / 0.1.2-alpha.5 | 三个必需 API 都已就位，未逐个验证 |
+| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) 及更早 | 不可适配，请改钉插件 `@mhfire/dsh-im-bridge@0.4.2`。这些版本仍带 `@deepseek-ai/dsh-client-runtime`（0.1.2-alpha.1 起删除）、没有 `ctx.settings.installSection`（0.1.2-alpha.2 起）、`Session` 也还是 `.events`（0.1.2-alpha.4 起改为 `snapshotEvents()`） |
+| 0.1.3-alpha.x / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
 
-建议把 `dsh` 钉在 `0.1.0-rc.8` 及以上，例如 `npx @deepseek-ai/dsh@0.1.1-rc.2 web`，不要只跑浮动的 `latest`。旧版 `bridge.js` 只要求本机有 `dsh` CLI，不受上表约束。
+建议把 `dsh` 钉在 `0.1.2-rc.1`，例如 `npx @deepseek-ai/dsh@0.1.2-rc.1 web`，不要只跑浮动的 `latest`。旧版 `bridge.js` 只要求本机有 `dsh` CLI，不受上表约束。
 
 ## 🚀 快速开始
 
 ### 前提
 
 - Node.js 18+（旧版 `bridge.js` 需要；插件随 dsh 运行）
-- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.0-rc.8 及以上**（见上一节）
+- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-rc.1 及以上**（见上一节）
 
 ### 1. 企业微信侧：创建智能机器人（一次性）
 
@@ -94,7 +95,7 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 ```powershell
 # 1) 从 npm 装进目标 profile（如 web）
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
+# 或钉版本：dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
 
 # 2) 在 $DSH_HOME/profiles/web/cordis.patch.yml 中补密钥（其余为 bundle 默认，可按需覆盖）
 # - id: im-bridge
@@ -103,7 +104,7 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 #     secret: "<你的 Secret>"
 #     # 可选：workspace / personaFile 等
 
-# 3) 重启 dsh 进程（建议钉版本，如 npx @deepseek-ai/dsh@0.1.1-rc.2 web）
+# 3) 重启 dsh 进程（建议钉版本，如 npx @deepseek-ai/dsh@0.1.2-rc.1 web）
 # 4) 也可在 Settings → 插件 → 插件配置 → 企业微信桥接 填写 botId/secret 后重启
 # 5) 在企业微信给机器人发消息即可使用
 ```

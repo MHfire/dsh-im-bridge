@@ -23,15 +23,16 @@ Host 通过 `ctx.settings.installSection` 注册 `im-bridge` 命名空间；浏�
 
 ## 兼容的 DeepSeek Harness 版本
 
-DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.2 按实际调用的 API 对齐已发布 tag：
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.3 按实际调用的 API 对齐已发布 tag：
 
 | DSH | 本包 |
 |---|---|
-| [0.1.0-rc.8](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.8)、[0.1.1-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.1)、[0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) | 可适配（对照开发的是 0.1.1-rc.2 一线） |
-| [0.1.0-rc.7](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.0-rc.7) 及更早 | 不可适配。rc.7 已有插件配置卡槽位和 `dsh plugin add`，但浏览器没有 `settingsScope.describe()`，配置卡加载和凭证「已配置」徽章会失败 |
-| 更新的 RC / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | 可适配（对照开发与验证的一线） |
+| 0.1.2-alpha.4 / 0.1.2-alpha.5 | 三个必需 API 都已就位，未逐个验证 |
+| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) 及更早 | 不可适配，请改钉插件 `@mhfire/dsh-im-bridge@0.4.2`。这些版本仍带 `@deepseek-ai/dsh-client-runtime`（0.1.2-alpha.1 起删除，浏览器半包会报 `missed the module table`）、没有 `ctx.settings.installSection`（0.1.2-alpha.2 起）、`Session` 也还是 `.events` 而非 `snapshotEvents()`（0.1.2-alpha.4 起） |
+| 0.1.3-alpha.x / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
 
-建议把 `dsh` 钉在 `0.1.0-rc.8` 及以上，例如 `npx @deepseek-ai/dsh@0.1.1-rc.2 web`，不要只跑浮动的 `latest`。
+建议把 `dsh` 钉在 `0.1.2-rc.1`，例如 `npx @deepseek-ai/dsh@0.1.2-rc.1 web`，不要只跑浮动的 `latest`。
 
 ## 安装
 
@@ -40,7 +41,7 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # 或钉版本：
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.2
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
 ```
 
 在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中补密钥即可（其余项已有 bundle 默认，可按需覆盖）：
@@ -65,9 +66,9 @@ dsh plugin --profile web add <本包路径>
 
 未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在 Settings 插件配置卡填写（见下节）。
 
-## Settings 插件配置卡
 `npm test` 先跑 `npm run typecheck`，它按 [tsconfig.typecheck.json](tsconfig.typecheck.json) 的 `paths` 解析 `@deepseek-ai/*`，指向同级 `../deepseek-harness` 中**已构建**的 `lib/types`——harness 改动服务与事件契约时，漂移在这里就会报错，而不是等到 boot 崩溃。因此本地开发需要把 harness 检出在插件仓库旁边并先 `pnpm run build`。`npm run build` 与 `npm pack` 不依赖它。
 
+## Settings 插件配置卡
 
 安装插件并启动 `dsh web` 后，打开 **设置 → 插件 → 插件配置**，展开 **企业微信桥接**（与「终端 / Agent 循环 / 网页搜索」同一组卡片）。改完点右下角 **保存** 写入 `settings.yaml` 用户层，与 profile `cordis.patch.yml` 同一层；**放弃** 丢掉未保存草稿。带「已覆盖」的字段可 **重置** 回 bundle 默认。
 
