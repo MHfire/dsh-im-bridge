@@ -21,7 +21,7 @@ const EXTERNALS = new Set([
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-runtime/client',
+  '@deepseek-ai/dsh-client-store',
 ])
 
 const isRequested = (specifier: string): boolean => EXTERNALS.has(specifier)

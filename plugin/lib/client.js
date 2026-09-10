@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let react_jsx_runtime = require("react/jsx-runtime");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		//#region \0dsh-css:C:\Users\user\Desktop\dsh-im-bridge\plugin\src\client\PluginCard.module.css.mjs
 		const css$1 = ".yj1zEa_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}.yj1zEa_card:hover{border-color:var(--dsw-alias-label-dimmed)}.yj1zEa_cardOpen{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}.yj1zEa_header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}.yj1zEa_header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.yj1zEa_headText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}.yj1zEa_name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}.yj1zEa_description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}.yj1zEa_chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}.yj1zEa_chevronOpen{transform:rotate(180deg)}.yj1zEa_body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}.yj1zEa_readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}.yj1zEa_pending{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.yj1zEa_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}.yj1zEa_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}.yj1zEa_discard,.yj1zEa_save{appearance:none;font:inherit;cursor:pointer;border:1px solid #0000;border-radius:8px;padding:5px 14px;font-size:13px;line-height:1.5}.yj1zEa_discard{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:0 0}.yj1zEa_discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}.yj1zEa_save{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}.yj1zEa_discard:disabled,.yj1zEa_save:disabled{opacity:.4;cursor:default}.yj1zEa_discard:focus-visible,.yj1zEa_save:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}";
 		const tagId$1 = "@mhfire/dsh-im-bridge/PluginCard.module.css";
@@ -497,7 +497,7 @@ window.__ModuleLoader__.load({
 			}
 			/** Publish a projection rebuilt whenever the scope or a draft changes. */
 			bind(project) {
-				const store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)(project());
+				const store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(project());
 				this.listeners.add(() => {
 					store.set(project());
 				});

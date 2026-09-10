@@ -3,12 +3,8 @@
  * Mirrors the Host Plugins section model without importing its chrome.
  */
 
-import {
-  createSnapshotStore,
-  type SettingsScope,
-  type SettingsScopeSnapshot,
-  type SnapshotStore,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** Write one staged field performs on save. */
 export type FieldWrite =

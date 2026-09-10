@@ -2,8 +2,12 @@
  * Browser half: Settings card keyed by the `im-bridge` namespace.
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-// Type-only: ctx.settingsScope.describe and the keyed slot declaration.
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+// Type-only: ctx.slots, ctx.locale, ctx.settingsScope.describe, and the keyed
+// slot declaration. Behavior crosses packages through services and slots only.
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { WecomCard } from './WecomCard.tsx'
