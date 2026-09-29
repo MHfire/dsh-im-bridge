@@ -297,6 +297,24 @@ interface SessionPersistence {
 
 interface WorkspaceRegistry {
   readonly archivedSessionIds: readonly string[]
+  /**
+   * Create or reuse the workspace record for an existing directory. The registry
+   * canonicalizes the path, so repeated calls for the same directory reuse the
+   * existing record instead of creating duplicates.
+   */
+  create(path: string, title?: string): Promise<WorkspaceEntity>
+}
+
+/**
+ * The single workspace-record operation this bridge needs: fold a session into
+ * its workspace group. Sessions this plugin creates start out ungrouped
+ * otherwise — `agents.create()` / `agents.resume()` register the session with
+ * the client store (so the sidebar *lists* it) but never touch the workspace
+ * ledger the sidebar *groups* by, which is why every WeCom window used to land
+ * under 「未分组」.
+ */
+interface WorkspaceEntity {
+  attachSession(sessionId: SessionId): Promise<void>
 }
 
 interface SessionStore {
@@ -729,6 +747,25 @@ export function apply(ctx: Context, config: Config): void {
       }
     }
 
+    /**
+     * Fold a session into its workspace group, so the sidebar lists it under the
+     * `workspace` this bridge runs in instead of falling back to 「未分组」.
+     * Best-effort: a registry failure must not break the message path, and the
+     * record is reused across sessions because `create` canonicalizes the
+     * directory before deciding whether to insert.
+     */
+    async function attachToWorkspace(sessionId: SessionId): Promise<void> {
+      const registry = ctx.get('workspaceRegistry') as WorkspaceRegistry | undefined
+      if (registry === undefined) return
+      try {
+        const workspace = await registry.create(cfg().workspace)
+        await workspace.attachSession(sessionId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn(`[im-bridge] 会话归入工作区失败: ${message}`)
+      }
+    }
+
     async function unpinLegacyWecomTitle(agent: LiveAgent): Promise<void> {
       const titles = ctx.get('sessionTitle') as SessionTitleService | undefined
       if (titles === undefined) return
@@ -842,6 +879,9 @@ export function apply(ctx: Context, config: Config): void {
         console.log(
           `[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId}${epoch} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ''}`,
         )
+        // Fire-and-forget: `attach` stays synchronous, and its three callers
+        // (adopt / resume / create) must not wait on a ledger write.
+        void attachToWorkspace(sessionId)
       }
 
       const live = agents.get(sessionId)
@@ -888,6 +928,28 @@ export function apply(ctx: Context, config: Config): void {
         if (raced !== undefined) {
           attach(raced, 'adopt')
           return st
+        }
+        // `planWecomBind` derives its `stored` set from the persistence headers,
+        // so a session that storage still owns but the headers no longer list
+        // makes it pick `create` for an occupied id. `agents.create` then rejects
+        // with "already exists" — which used to abort the whole message and leave
+        // the bot silently unanswered, even though the session was perfectly
+        // resumable. Recover by resuming it instead of rethrowing.
+        const cause = error instanceof Error ? error.message : String(error)
+        if (cause.includes('already exists')) {
+          try {
+            const { agent } = await agents.resume({
+              resumeSessionId: sessionId,
+              agentOptions,
+              setup,
+            })
+            attach(agent, 'resume')
+            console.log(`[im-bridge] 会话 ${sessionId} 已存在，改用 resume 复用`)
+            return st
+          } catch (retryError) {
+            const retryMessage = retryError instanceof Error ? retryError.message : String(retryError)
+            console.error(`[im-bridge] 会话 ${sessionId} resume 兜底也失败: ${retryMessage}`)
+          }
         }
         throw error
       }
