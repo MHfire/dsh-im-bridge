@@ -220,6 +220,10 @@ interface ChatState {
   agent?: LiveAgent
   sessionId?: string
   kind?: 'single' | 'group'
+  /** 当前窗口发送者 userid（私聊）—— 侧边栏标题显示「谁在问」。 */
+  sender?: string
+  /** 当前窗口群 id（群聊）。 */
+  chatid?: string
   /** True when the current inbound sender is on `wecomCli.allowFrom`. */
   office: boolean
   /** Prompt sections already registered on this Agent. */
@@ -708,7 +712,7 @@ export function apply(ctx: Context, config: Config): void {
         // An explicit GUI rename is pinned on purpose; only automatic titles get labelled.
         if (data.source?.kind === 'user') return
         const raw = typeof data.title === 'string' ? data.title : ''
-        const next = wecomDisplayTitle(kind, raw)
+        const next = wecomDisplayTitle(kind, raw, kind === 'single' ? st.sender : undefined)
         if (next === raw) return
         const messageSeqs = Array.isArray(data.messageSeqs)
           ? data.messageSeqs.filter((seq) => typeof seq === 'number')
@@ -1011,6 +1015,8 @@ export function apply(ctx: Context, config: Config): void {
         chats.set(ref.key, st)
       }
       st.office = senderHasOfficeAccess(cfg().wecomCli.allowFrom, ref.sender)
+      st.sender = ref.sender
+      st.chatid = ref.chatid
       st = await ensureAgent(ref)
       const startedAt = Date.now()
       const streamId = generateReqId('stream')
