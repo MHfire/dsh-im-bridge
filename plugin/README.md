@@ -140,7 +140,7 @@ thinking:
 
 办公命令**只经 `wecom_cli` 工具执行**：模型传 `argv`（`wecom-cli` 之后的参数数组），插件直接 spawn 官方二进制，并拒绝任何 `auth init`。PATH 上的 `wecom-cli` 是一个只打印拒绝信息并 `exit 1` 的 shim，所以群聊、GUI 以及任何 `pwsh wecom-cli` 都跑不通；shim 的文案会指回 `wecom_cli`。凭证目录不进程级导出，只在插件自己 spawn 时注入。
 
-`wecomCli.enabled` 默认关闭。开启须同时配置非空 **`wecomCli.allowFrom`**（办公 userid）；根级 `allowFrom` 只管谁能聊天，空名单表示所有人可问诊断。办公名单为空时插件会告警并跳过 shim / 授权 / `wecom_cli`。
+`wecomCli.enabled` 默认关闭。开启须同时配置非空 **`wecomCli.allowFrom`**（办公 userid）；根级 `allowFrom` 只管谁能聊天，空名单表示所有人可问诊断。办公名单为空时插件会告警并跳过 shim / 授权 / `wecom_cli`。没有 `wecomcli-*`、或凭证目录建不出来时也只告警并跳过办公层，**不中断** `dsh web`。
 
 一次性准备：
 

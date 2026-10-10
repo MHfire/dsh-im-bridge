@@ -28,6 +28,7 @@ import {
   DEFAULT_WORKSPACE_CONFIG_DIR,
   DEFAULT_WORKSPACE_SKILLS_DIR,
   ensureConfigDir,
+  tryEnsureConfigDir,
   ensureOnPath,
   extractWecomSkillsFromZip,
   installOfficialWecomSkills,
@@ -299,6 +300,33 @@ test('ensureConfigDir creates the directory and exports nothing', () => {
     assert.equal(ensureConfigDir(dir), dir)
     assert.equal(existsSync(dir), true)
     assert.equal(process.env[WECOM_CLI_CONFIG_DIR_ENV], before)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('tryEnsureConfigDir returns ok when mkdir succeeds', () => {
+  const root = scratch('try-config-ok')
+  const dir = join(root, '.dsh', 'wecom-cli')
+  try {
+    const result = tryEnsureConfigDir(dir)
+    assert.equal(result.ok, true)
+    if (result.ok) assert.equal(result.dir, dir)
+    assert.equal(existsSync(dir), true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('tryEnsureConfigDir returns failure without throwing when path is a file', () => {
+  const root = scratch('try-config-fail')
+  mkdirSync(root, { recursive: true })
+  const filePath = join(root, 'blocked')
+  writeFileSync(filePath, 'not-a-directory', 'utf8')
+  try {
+    const result = tryEnsureConfigDir(filePath)
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.message, /./)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

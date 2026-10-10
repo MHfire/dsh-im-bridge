@@ -46,7 +46,6 @@ import {
   authInitHint,
   countWecomcliSkills,
   countWorkspaceWecomcliLeaks,
-  ensureConfigDir,
   ensureOnPath,
   installOfficialWecomSkills,
   loadWecomSkills,
@@ -60,6 +59,7 @@ import {
   shouldEnableWecomCli,
   shouldInjectWecomOfficeSkills,
   skillsInstallHint,
+  tryEnsureConfigDir,
   trySeedAuth,
   type InstallWecomSkillsResult,
   type WecomSkill,
@@ -640,35 +640,54 @@ export function apply(ctx: Context, config: Config): void {
       if (leakCount > 0) {
         console.warn(`[im-bridge] ${WORKSPACE_WECOMCLI_LEAK_MESSAGE}（${String(leakCount)}）`)
       }
-      if (!shouldEnableWecomCli(true, wecomCli.allowFrom)) {
-        console.warn(`[im-bridge] ${ALLOW_FROM_REQUIRED_MESSAGE}`)
-      } else {
-        wecomCliReady = true
-        const binJs = resolveWecomBin()
-        if (binJs === undefined) {
-          console.warn('[im-bridge] 未找到 @wecom/cli 二进制，办公命令不可用。请确认插件依赖已安装。')
+      // Missing wecomcli-* only warns: chat and dsh web keep running without the office layer.
+      if (wecomcliCount > 0) {
+        if (!shouldEnableWecomCli(true, wecomCli.allowFrom)) {
+          console.warn(`[im-bridge] ${ALLOW_FROM_REQUIRED_MESSAGE}`)
         } else {
-          const configDir = ensureConfigDir(resolveConfigDir(wecomCli.configDir, cfg().workspace))
-          officeCli = { binJs, configDir }
-          console.log(`[im-bridge] wecom-cli 凭证目录: ${configDir}`)
-          const pathResult = ensureOnPath()
-          console.log(
-            `[im-bridge] PATH 上的 wecom-cli 已改为拒绝执行: ${pathResult.shimDir}${pathResult.shadowed ? '（已遮蔽另一个 wecom-cli）' : ''}`,
-          )
-          let status = await probeAuth(binJs, configDir)
-          if (status === 'unauthorized') {
-            if ((await trySeedAuth(binJs, cfg().botId, cfg().secret, configDir)) === undefined) {
-              status = await probeAuth(binJs, configDir)
-            }
-          }
-          if (status === 'authorized') {
-            console.log('[im-bridge] wecom-cli 已授权')
-          } else if (status === 'unauthorized') {
-            console.warn(
-              `[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${authInitHint(configDir)}（输入同一套密钥，不要全局安装）。`,
-            )
+          const binJs = resolveWecomBin()
+          if (binJs === undefined) {
+            console.warn('[im-bridge] 未找到 @wecom/cli 二进制，办公命令不可用。请确认插件依赖已安装。')
           } else {
-            console.warn('[im-bridge] wecom-cli auth show 失败。')
+            try {
+              const ensured = tryEnsureConfigDir(resolveConfigDir(wecomCli.configDir, cfg().workspace))
+              if (!ensured.ok) {
+                console.warn(
+                  `[im-bridge] wecom-cli 凭证目录不可用（${ensured.message}），已跳过办公层。dsh web 继续运行。`,
+                )
+              } else {
+                const { dir: configDir } = ensured
+                wecomCliReady = true
+                officeCli = { binJs, configDir }
+                console.log(`[im-bridge] wecom-cli 凭证目录: ${configDir}`)
+                const pathResult = ensureOnPath()
+                console.log(
+                  `[im-bridge] PATH 上的 wecom-cli 已改为拒绝执行: ${pathResult.shimDir}${pathResult.shadowed ? '（已遮蔽另一个 wecom-cli）' : ''}`,
+                )
+                let status = await probeAuth(binJs, configDir)
+                if (status === 'unauthorized') {
+                  if ((await trySeedAuth(binJs, cfg().botId, cfg().secret, configDir)) === undefined) {
+                    status = await probeAuth(binJs, configDir)
+                  }
+                }
+                if (status === 'authorized') {
+                  console.log('[im-bridge] wecom-cli 已授权')
+                } else if (status === 'unauthorized') {
+                  console.warn(
+                    `[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${authInitHint(configDir)}（输入同一套密钥，不要全局安装）。`,
+                  )
+                } else {
+                  console.warn('[im-bridge] wecom-cli auth show 失败。')
+                }
+              }
+            } catch (error) {
+              wecomCliReady = false
+              officeCli = undefined
+              const message = error instanceof Error ? error.message : String(error)
+              console.warn(
+                `[im-bridge] wecom-cli 办公层初始化失败（${message}），已跳过。dsh web 继续运行。`,
+              )
+            }
           }
         }
       }

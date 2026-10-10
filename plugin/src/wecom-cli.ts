@@ -324,6 +324,26 @@ export function ensureConfigDir(dir: string): string {
   return dir
 }
 
+/** Outcome of {@link tryEnsureConfigDir}: created path, or a non-throwing failure. */
+export type TryEnsureConfigDirResult =
+  | { ok: true; dir: string }
+  | { ok: false; message: string }
+
+/**
+ * Create the credential directory without throwing. Boot uses this so a missing
+ * or unwritable workspace path only disables the office layer.
+ * @param dir - absolute credential directory.
+ * @returns the created path, or a failure message when mkdir cannot complete.
+ */
+export function tryEnsureConfigDir(dir: string): TryEnsureConfigDirResult {
+  try {
+    return { ok: true, dir: ensureConfigDir(dir) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, message }
+  }
+}
+
 /**
  * Environment for one CLI spawn: `WECOM_CLI_CONFIG_DIR` reaches the CLI only here,
  * never `~/.config/wecom` and never the ambient process environment.

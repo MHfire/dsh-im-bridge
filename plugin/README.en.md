@@ -140,7 +140,7 @@ The plugin depends on the official [`@wecom/cli`](https://www.npmjs.com/package/
 
 Office commands run **only through the `wecom_cli` tool**: the model passes `argv` (the arguments after `wecom-cli`), the plugin spawns the official binary directly, and any `auth init` is refused. The `wecom-cli` on PATH is a shim that prints a refusal and exits 1, so group chats, the GUI, and any `pwsh wecom-cli` fail; the shim’s message points back at `wecom_cli`. The credential directory is never exported to the process environment — it is injected per spawn.
 
-`wecomCli.enabled` is off by default. Turning it on requires a non-empty **`wecomCli.allowFrom`** (office userids). Root `allowFrom` only gates who may chat; empty means everyone may ask. An empty office list logs a warning and skips the shim / auth.
+`wecomCli.enabled` is off by default. Turning it on requires a non-empty **`wecomCli.allowFrom`** (office userids). Root `allowFrom` only gates who may chat; empty means everyone may ask. An empty office list logs a warning and skips the shim / auth. Missing `wecomcli-*` or a credential directory that cannot be created also only warns and skips the office layer — **`dsh web` keeps running**.
 
 One-time setup:
 
