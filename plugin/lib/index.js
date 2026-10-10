@@ -8818,6 +8818,23 @@ function apply(ctx, config) {
 				return /* @__PURE__ */ new Set();
 			}
 		}
+		/**
+		* Fold a session into its workspace group, so the sidebar lists it under the
+		* `workspace` this bridge runs in instead of falling back to 「未分组」.
+		* Best-effort: a registry failure must not break the message path, and the
+		* record is reused across sessions because `create` canonicalizes the
+		* directory before deciding whether to insert.
+		*/
+		async function attachToWorkspace(sessionId) {
+			const registry = ctx.get("workspaceRegistry");
+			if (registry === void 0) return;
+			try {
+				await (await registry.create(cfg().workspace)).attachSession(sessionId);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn(`[im-bridge] 会话归入工作区失败: ${message}`);
+			}
+		}
 		async function unpinLegacyWecomTitle(agent) {
 			const titles = ctx.get("sessionTitle");
 			if (titles === void 0) return;
@@ -8910,6 +8927,7 @@ function apply(ctx, config) {
 				if (cwd !== void 0 && cwd !== cfg().workspace) console.warn(`[im-bridge] 会话 ${sessionId} 仍使用存档目录 ${cwd}，当前 workspace=${cfg().workspace}`);
 				const epoch = plan.epoch > 1 ? ` 第${String(plan.epoch)}段` : "";
 				console.log(`[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId}${epoch} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ""}`);
+				attachToWorkspace(sessionId);
 			};
 			const live = agents.get(sessionId);
 			if (plan.bind === "adopt" && live !== void 0) {
@@ -8959,6 +8977,19 @@ function apply(ctx, config) {
 				if (raced !== void 0) {
 					attach(raced, "adopt");
 					return st;
+				}
+				if ((error instanceof Error ? error.message : String(error)).includes("already exists")) try {
+					const { agent } = await agents.resume({
+						resumeSessionId: sessionId,
+						agentOptions,
+						setup
+					});
+					attach(agent, "resume");
+					console.log(`[im-bridge] 会话 ${sessionId} 已存在，改用 resume 复用`);
+					return st;
+				} catch (retryError) {
+					const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+					console.error(`[im-bridge] 会话 ${sessionId} resume 兜底也失败: ${retryMessage}`);
 				}
 				throw error;
 			}

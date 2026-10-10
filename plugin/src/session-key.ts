@@ -67,17 +67,18 @@ export const WECOM_TITLE_PREFIX = {
 } as const
 
 /** Leading `企微·` / previously used `企业微信·` channel labels. */
-const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)\s*/u
+const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)(?:·[^\s·]+)?\s*/u
 
 /**
  * Sidebar title: channel kind plus first-prompt text, never an id.
  * @param kind - {@link WecomSessionRef.kind}.
  * @param raw - automatic or previously prefixed title.
  */
-export function wecomDisplayTitle(kind: 'single' | 'group', raw: string): string {
-  const prefix = WECOM_TITLE_PREFIX[kind]
+export function wecomDisplayTitle(kind: 'single' | 'group', raw: string, who?: string): string {
+  const base = WECOM_TITLE_PREFIX[kind]
+  const label = who !== undefined && who !== '' ? `${base}·${who}` : base
   const stripped = raw.replace(CHANNEL_PREFIX, '').trim()
-  return stripped === '' ? prefix : `${prefix} ${stripped}`
+  return stripped === '' ? label : `${label} ${stripped}`
 }
 
 /** One leading `@nickname` and its separator; JS `\s` covers WeCom's U+00A0 and U+2005. */

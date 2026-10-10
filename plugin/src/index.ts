@@ -220,6 +220,10 @@ interface ChatState {
   agent?: LiveAgent
   sessionId?: string
   kind?: 'single' | 'group'
+  /** 当前窗口发送者 userid（私聊）—— 侧边栏标题显示「谁在问」。 */
+  sender?: string
+  /** 当前窗口群 id（群聊）。 */
+  chatid?: string
   /** True when the current inbound sender is on `wecomCli.allowFrom`. */
   office: boolean
   /** Prompt sections already registered on this Agent. */
@@ -297,6 +301,24 @@ interface SessionPersistence {
 
 interface WorkspaceRegistry {
   readonly archivedSessionIds: readonly string[]
+  /**
+   * Create or reuse the workspace record for an existing directory. The registry
+   * canonicalizes the path, so repeated calls for the same directory reuse the
+   * existing record instead of creating duplicates.
+   */
+  create(path: string, title?: string): Promise<WorkspaceEntity>
+}
+
+/**
+ * The single workspace-record operation this bridge needs: fold a session into
+ * its workspace group. Sessions this plugin creates start out ungrouped
+ * otherwise — `agents.create()` / `agents.resume()` register the session with
+ * the client store (so the sidebar *lists* it) but never touch the workspace
+ * ledger the sidebar *groups* by, which is why every WeCom window used to land
+ * under 「未分组」.
+ */
+interface WorkspaceEntity {
+  attachSession(sessionId: SessionId): Promise<void>
 }
 
 interface SessionStore {
@@ -711,7 +733,7 @@ export function apply(ctx: Context, config: Config): void {
         // An explicit GUI rename is pinned on purpose; only automatic titles get labelled.
         if (data.source?.kind === 'user') return
         const raw = typeof data.title === 'string' ? data.title : ''
-        const next = wecomDisplayTitle(kind, raw)
+        const next = wecomDisplayTitle(kind, raw, kind === 'single' ? st.sender : undefined)
         if (next === raw) return
         const messageSeqs = Array.isArray(data.messageSeqs)
           ? data.messageSeqs.filter((seq) => typeof seq === 'number')
@@ -747,6 +769,25 @@ export function apply(ctx: Context, config: Config): void {
         const message = error instanceof Error ? error.message : String(error)
         console.warn(`[im-bridge] 读归档会话失败: ${message}`)
         return new Set()
+      }
+    }
+
+    /**
+     * Fold a session into its workspace group, so the sidebar lists it under the
+     * `workspace` this bridge runs in instead of falling back to 「未分组」.
+     * Best-effort: a registry failure must not break the message path, and the
+     * record is reused across sessions because `create` canonicalizes the
+     * directory before deciding whether to insert.
+     */
+    async function attachToWorkspace(sessionId: SessionId): Promise<void> {
+      const registry = ctx.get('workspaceRegistry') as WorkspaceRegistry | undefined
+      if (registry === undefined) return
+      try {
+        const workspace = await registry.create(cfg().workspace)
+        await workspace.attachSession(sessionId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn(`[im-bridge] 会话归入工作区失败: ${message}`)
       }
     }
 
@@ -863,6 +904,9 @@ export function apply(ctx: Context, config: Config): void {
         console.log(
           `[im-bridge] 为 ${ref.key} ${how}会话 ${sessionId}${epoch} userid=${ref.sender} chattype=${ref.kind} chatid=${ref.chatid ?? ''}`,
         )
+        // Fire-and-forget: `attach` stays synchronous, and its three callers
+        // (adopt / resume / create) must not wait on a ledger write.
+        void attachToWorkspace(sessionId)
       }
 
       const live = agents.get(sessionId)
@@ -909,6 +953,28 @@ export function apply(ctx: Context, config: Config): void {
         if (raced !== undefined) {
           attach(raced, 'adopt')
           return st
+        }
+        // `planWecomBind` derives its `stored` set from the persistence headers,
+        // so a session that storage still owns but the headers no longer list
+        // makes it pick `create` for an occupied id. `agents.create` then rejects
+        // with "already exists" — which used to abort the whole message and leave
+        // the bot silently unanswered, even though the session was perfectly
+        // resumable. Recover by resuming it instead of rethrowing.
+        const cause = error instanceof Error ? error.message : String(error)
+        if (cause.includes('already exists')) {
+          try {
+            const { agent } = await agents.resume({
+              resumeSessionId: sessionId,
+              agentOptions,
+              setup,
+            })
+            attach(agent, 'resume')
+            console.log(`[im-bridge] 会话 ${sessionId} 已存在，改用 resume 复用`)
+            return st
+          } catch (retryError) {
+            const retryMessage = retryError instanceof Error ? retryError.message : String(retryError)
+            console.error(`[im-bridge] 会话 ${sessionId} resume 兜底也失败: ${retryMessage}`)
+          }
         }
         throw error
       }
@@ -970,6 +1036,8 @@ export function apply(ctx: Context, config: Config): void {
         chats.set(ref.key, st)
       }
       st.office = senderHasOfficeAccess(cfg().wecomCli.allowFrom, ref.sender)
+      st.sender = ref.sender
+      st.chatid = ref.chatid
       st = await ensureAgent(ref)
       const startedAt = Date.now()
       const streamId = generateReqId('stream')
