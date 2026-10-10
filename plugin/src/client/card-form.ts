@@ -4,7 +4,7 @@
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** Write one staged field performs on save. */
 export type FieldWrite =
@@ -133,7 +133,7 @@ export class CardForm<T> {
    * @param secrets - write-only controls; a blank draft is a no-op.
    */
   constructor(
-    private readonly scope: SettingsScope<T>,
+    private readonly scope: ConfigForm<T>,
     specs: CardFieldSpec[],
     secrets: CardSecretSpec[] = [],
   ) {
@@ -267,7 +267,7 @@ export class CardForm<T> {
     return spec
   }
 
-  private snapshotOf(): SettingsScopeSnapshot<T> {
+  private snapshotOf(): ConfigFormSnapshot<T> {
     return this.scope.getSnapshot()
   }
 

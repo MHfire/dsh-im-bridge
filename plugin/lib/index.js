@@ -7582,6 +7582,25 @@ function ensureConfigDir(dir) {
 	return dir;
 }
 /**
+* Create the credential directory without throwing. Boot uses this so a missing
+* or unwritable workspace path only disables the office layer.
+* @param dir - absolute credential directory.
+* @returns the created path, or a failure message when mkdir cannot complete.
+*/
+function tryEnsureConfigDir(dir) {
+	try {
+		return {
+			ok: true,
+			dir: ensureConfigDir(dir)
+		};
+	} catch (error) {
+		return {
+			ok: false,
+			message: error instanceof Error ? error.message : String(error)
+		};
+	}
+}
+/**
 * Environment for one CLI spawn: `WECOM_CLI_CONFIG_DIR` reaches the CLI only here,
 * never `~/.config/wecom` and never the ambient process environment.
 * @param configDir - absolute credential directory.
@@ -8400,9 +8419,9 @@ async function sendFinal(ws, frame, streamId, content) {
 *
 * Function-plugin shape (`name` / `inject` / `Config` / `apply`, no default
 * export). Messages create in-process Agents so per-chat-window sessions stay on
-* the same Loader tree as the Web GUI. Settings register through
-* `ctx.settings.installSection`; live fields read `source()`, credentials still
-* require a process restart to open the WebSocket.
+* the same Loader tree as the Web GUI. The Config schema is volatile, so the
+* settings form edits this entry in place. Live fields read `source()`;
+* credentials still require a process restart to open the WebSocket.
 */
 /** Package root (persona files live beside package.json). */
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -8445,7 +8464,7 @@ const WecomCliSchema = z.object({
 	configDir: z.string().default(""),
 	allowFrom: z.array(String).default([])
 });
-/** Schemastery schema for the composition entry and settings namespace. */
+/** Schemastery schema for the composition entry and settings form. */
 const Config = z.object({
 	botId: z.string().default("").role("secret"),
 	secret: z.string().default("").role("secret"),
@@ -8469,7 +8488,7 @@ const Config = z.object({
 		configDir: "",
 		allowFrom: []
 	})
-});
+}).volatile();
 /** Placeholder Map value so later messages on the same key share one queue. */
 function emptyChatState() {
 	return {
@@ -8589,6 +8608,19 @@ function requireService(ctx, name) {
 	if (service === void 0) throw new Error(`im-bridge: 需要 ${name} 服务`);
 	return service;
 }
+const VOLATILE_WRITE = Symbol.for("cosmokit.volatile.write");
+/**
+* Read a volatile config reference down to the plain section the bridge uses.
+* @param value - schema output, either a plain section or a volatile reference.
+* @returns the current plain section.
+*/
+function unwrapConfig(value) {
+	if (value !== null && typeof value === "object" && VOLATILE_WRITE in value && "get" in value) {
+		const read = value.get;
+		if (typeof read === "function") return unwrapConfig(read.call(value));
+	}
+	return value;
+}
 /**
 * Mount the WeCom bridge: settings namespace, then a deferred WebSocket after Loader settle.
 * @param ctx - host plugin context.
@@ -8598,22 +8630,19 @@ function apply(ctx, config) {
 	const agents = requireService(ctx, "agents");
 	const sessions = requireService(ctx, "sessions");
 	const defaultModel = requireService(ctx, "agentDefaultModel");
-	let source = () => config;
 	let settings;
 	ctx.inject(["settings"], (settingsCtx) => {
-		const provider = settingsCtx.settings;
-		provider.installSection(ctx, IM_BRIDGE_NS, Config, config, {
-			setSource: (current) => {
-				source = current;
-			},
-			onChange: () => {}
-		});
-		settings = provider;
+		const forms = settingsCtx.get("settings");
+		const disposeAuto = forms?.configure({ auto: false }, ctx.fiber);
+		settings = { get(ns) {
+			return forms?.describe().find((row) => row.ns === ns)?.value;
+		} };
 		settingsCtx.effect(() => () => {
+			disposeAuto?.();
 			settings = void 0;
 		}, "im-bridge: settings reader");
 	});
-	const cfg = () => source();
+	const cfg = () => unwrapConfig(config);
 	const chats = /* @__PURE__ */ new Map();
 	let wecomCliReady = false;
 	let officeSkills = [];
@@ -8707,27 +8736,38 @@ function apply(ctx, config) {
 			else console.log(`[im-bridge] 已从 ${skillsDir} 加载 ${String(wecomcliCount)} 个 wecomcli-*，将在办公单聊 Agent 上注册`);
 			const leakCount = countWorkspaceWecomcliLeaks(cfg().workspace);
 			if (leakCount > 0) console.warn(`[im-bridge] ${WORKSPACE_WECOMCLI_LEAK_MESSAGE}（${String(leakCount)}）`);
-			if (!shouldEnableWecomCli(true, wecomCli.allowFrom)) console.warn(`[im-bridge] ${ALLOW_FROM_REQUIRED_MESSAGE}`);
-			else {
-				wecomCliReady = true;
-				const binJs = resolveWecomBin();
-				if (binJs === void 0) console.warn("[im-bridge] 未找到 @wecom/cli 二进制，办公命令不可用。请确认插件依赖已安装。");
+			if (wecomcliCount > 0) {
+				if (!shouldEnableWecomCli(true, wecomCli.allowFrom)) console.warn(`[im-bridge] ${ALLOW_FROM_REQUIRED_MESSAGE}`);
 				else {
-					const configDir = ensureConfigDir(resolveConfigDir(wecomCli.configDir, cfg().workspace));
-					officeCli = {
-						binJs,
-						configDir
-					};
-					console.log(`[im-bridge] wecom-cli 凭证目录: ${configDir}`);
-					const pathResult = ensureOnPath();
-					console.log(`[im-bridge] PATH 上的 wecom-cli 已改为拒绝执行: ${pathResult.shimDir}${pathResult.shadowed ? "（已遮蔽另一个 wecom-cli）" : ""}`);
-					let status = await probeAuth(binJs, configDir);
-					if (status === "unauthorized") {
-						if (await trySeedAuth(binJs, cfg().botId, cfg().secret, configDir) === void 0) status = await probeAuth(binJs, configDir);
+					const binJs = resolveWecomBin();
+					if (binJs === void 0) console.warn("[im-bridge] 未找到 @wecom/cli 二进制，办公命令不可用。请确认插件依赖已安装。");
+					else try {
+						const ensured = tryEnsureConfigDir(resolveConfigDir(wecomCli.configDir, cfg().workspace));
+						if (!ensured.ok) console.warn(`[im-bridge] wecom-cli 凭证目录不可用（${ensured.message}），已跳过办公层。dsh web 继续运行。`);
+						else {
+							const { dir: configDir } = ensured;
+							wecomCliReady = true;
+							officeCli = {
+								binJs,
+								configDir
+							};
+							console.log(`[im-bridge] wecom-cli 凭证目录: ${configDir}`);
+							const pathResult = ensureOnPath();
+							console.log(`[im-bridge] PATH 上的 wecom-cli 已改为拒绝执行: ${pathResult.shimDir}${pathResult.shadowed ? "（已遮蔽另一个 wecom-cli）" : ""}`);
+							let status = await probeAuth(binJs, configDir);
+							if (status === "unauthorized") {
+								if (await trySeedAuth(binJs, cfg().botId, cfg().secret, configDir) === void 0) status = await probeAuth(binJs, configDir);
+							}
+							if (status === "authorized") console.log("[im-bridge] wecom-cli 已授权");
+							else if (status === "unauthorized") console.warn(`[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${authInitHint(configDir)}（输入同一套密钥，不要全局安装）。`);
+							else console.warn("[im-bridge] wecom-cli auth show 失败。");
+						}
+					} catch (error) {
+						wecomCliReady = false;
+						officeCli = void 0;
+						const message = error instanceof Error ? error.message : String(error);
+						console.warn(`[im-bridge] wecom-cli 办公层初始化失败（${message}），已跳过。dsh web 继续运行。`);
 					}
-					if (status === "authorized") console.log("[im-bridge] wecom-cli 已授权");
-					else if (status === "unauthorized") console.warn(`[im-bridge] wecom-cli 未能用 botId/secret 完成授权。请在 host 上执行 ${authInitHint(configDir)}（输入同一套密钥，不要全局安装）。`);
-					else console.warn("[im-bridge] wecom-cli auth show 失败。");
 				}
 			}
 		}

@@ -3,9 +3,9 @@
  *
  * Function-plugin shape (`name` / `inject` / `Config` / `apply`, no default
  * export). Messages create in-process Agents so per-chat-window sessions stay on
- * the same Loader tree as the Web GUI. Settings register through
- * `ctx.settings.installSection`; live fields read `source()`, credentials still
- * require a process restart to open the WebSocket.
+ * the same Loader tree as the Web GUI. The Config schema is volatile, so the
+ * settings form edits this entry in place. Live fields read `source()`;
+ * credentials still require a process restart to open the WebSocket.
  */
 
 import { readFileSync } from 'node:fs'
@@ -154,8 +154,8 @@ export interface Config {
   wecomCli: WecomCliConfig
 }
 
-/** Schemastery schema for the composition entry and settings namespace. */
-export const Config: z<Config> = z.object({
+/** Schemastery schema for the composition entry and settings form. */
+export const Config = z.object({
   botId: z.string().default('').role('secret'),
   secret: z.string().default('').role('secret'),
   workspace: z.string().default(process.cwd()),
@@ -173,7 +173,7 @@ export const Config: z<Config> = z.object({
   deniedMessage: z.string().default('无权访问本服务'),
   welcomeMessage: z.string().default('👋 办公助手已就绪。直接发消息即可，例如查文件、整理文档、查资料或处理日常事务。'),
   wecomCli: WecomCliSchema.default({ enabled: false, skillsDir: '', configDir: '', allowFrom: [] }),
-})
+}).volatile()
 
 interface LoggedEvent {
   seq: number
@@ -349,22 +349,10 @@ interface SettingsReader {
   get(ns: string): unknown
 }
 
-/** Hooks `installSection` drives at attach, at each committed change, and at detach. */
-interface SettingsSectionHooks<T> {
-  setSource(current: () => T): void
-  onChange(): void
-  validate?(value: T): void
-}
-
-/** `ctx.settings` members this plugin uses, duck-typed like the other host services. */
-interface SettingsService extends SettingsReader {
-  installSection<T>(
-    owner: Context,
-    ns: string,
-    schema: z<T>,
-    entry: T,
-    hooks: SettingsSectionHooks<T>,
-  ): void
+/** Settings service face this bridge reads. Forms come from the volatile Config schema. */
+interface SettingsForms {
+  configure(presentation: { auto?: boolean }, owner: Context['fiber']): () => void
+  describe(): ReadonlyArray<{ ns: string; value: unknown }>
 }
 
 interface LoaderTree {
@@ -510,6 +498,21 @@ function requireService<T>(ctx: Context, name: string): T {
   return service
 }
 
+const VOLATILE_WRITE = Symbol.for('cosmokit.volatile.write')
+
+/**
+ * Read a volatile config reference down to the plain section the bridge uses.
+ * @param value - schema output, either a plain section or a volatile reference.
+ * @returns the current plain section.
+ */
+function unwrapConfig(value: unknown): Config {
+  if (value !== null && typeof value === 'object' && VOLATILE_WRITE in value && 'get' in value) {
+    const read = (value as { get?: unknown }).get
+    if (typeof read === 'function') return unwrapConfig(read.call(value))
+  }
+  return value as Config
+}
+
 /**
  * Mount the WeCom bridge: settings namespace, then a deferred WebSocket after Loader settle.
  * @param ctx - host plugin context.
@@ -520,23 +523,22 @@ export function apply(ctx: Context, config: Config): void {
   const sessions = requireService<SessionStore>(ctx, 'sessions')
   const defaultModel = requireService<DefaultModel>(ctx, 'agentDefaultModel')
 
-  let source = (): Config => config
   let settings: SettingsReader | undefined
   ctx.inject(['settings'], (settingsCtx) => {
-    const provider = settingsCtx.settings as SettingsService
-    // The owner is this plugin's own ctx, not the injected one: the provider
-    // reads it to tell its own detach from this plugin unloading.
-    provider.installSection(ctx, IM_BRIDGE_NS, Config, config, {
-      setSource: (current) => { source = current },
-      onChange: () => {
-        // Live fields are read through source() on the next handle/ensureAgent.
-        // botId/secret still require a process restart to open the WebSocket.
+    const forms = settingsCtx.get('settings') as SettingsForms | undefined
+    // Hide the generated page; the browser half registers the WeCom card.
+    const disposeAuto = forms?.configure({ auto: false }, ctx.fiber)
+    settings = {
+      get(ns: string) {
+        return forms?.describe().find(row => row.ns === ns)?.value
       },
-    })
-    settings = provider
-    settingsCtx.effect(() => () => { settings = undefined }, 'im-bridge: settings reader')
+    }
+    settingsCtx.effect(() => () => {
+      disposeAuto?.()
+      settings = undefined
+    }, 'im-bridge: settings reader')
   })
-  const cfg = (): Config => source()
+  const cfg = (): Config => unwrapConfig(config)
 
   const chats = new Map<string, ChatState>()
   let wecomCliReady = false

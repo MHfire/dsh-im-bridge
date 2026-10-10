@@ -1,7 +1,7 @@
 /** Staged form over the `im-bridge` settings namespace. */
 
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
   CardForm,
   csvField,
@@ -105,12 +105,12 @@ export class WecomCardController {
   private skillsError = ''
 
   /**
-   * @param scope - bound settings scope for the `im-bridge` namespace.
+   * @param scope - configuration form for the `im-bridge` namespace.
    * @param describe - Host describe face; secret literals never ride it.
    * @param rpc - optional Connection RPC for the skills install button.
    */
   constructor(
-    private readonly scope: SettingsScope<WecomCardSettings>,
+    private readonly scope: ConfigForm<WecomCardSettings>,
     private readonly describe: SettingsDescribeFace,
     private readonly rpc: SkillsInstallRpc | undefined,
   ) {

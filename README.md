@@ -70,19 +70,18 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 
 | DSH | 本仓库插件 |
 |---|---|
-| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | 可适配（对照开发与验证的一线） |
-| 0.1.2-alpha.4 / 0.1.2-alpha.5 | 三个必需 API 都已就位，未逐个验证 |
-| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) 及更早 | 不可适配，请改钉插件 `@mhfire/dsh-im-bridge@0.4.2`。这些版本仍带 `@deepseek-ai/dsh-client-runtime`（0.1.2-alpha.1 起删除）、没有 `ctx.settings.installSection`（0.1.2-alpha.2 起）、`Session` 也还是 `.events`（0.1.2-alpha.4 起改为 `snapshotEvents()`） |
-| 0.1.3-alpha.x / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
+| [0.2.0-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.0-rc.2) | 可适配（对照开发与验证的一线） |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) 及更早 | 不可适配。这些版本没有 `configForms`、`plugins.item`，也没有这套 volatile 表单 |
+| 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验插件页卡片和企微连线 |
 
-建议把 `dsh` 钉在 `0.1.2-rc.1`，例如 `npx @deepseek-ai/dsh@0.1.2-rc.1 web`，不要只跑浮动的 `latest`。旧版 `bridge.js` 只要求本机有 `dsh` CLI，不受上表约束。
+建议把 `dsh` 钉在 `0.2.0-rc.2`，例如 `npx @deepseek-ai/dsh@0.2.0-rc.2 web`，不要只跑浮动的 `latest`。旧版 `bridge.js` 只要求本机有 `dsh` CLI，不受上表约束。
 
 ## 🚀 快速开始
 
 ### 前提
 
 - Node.js 18+（旧版 `bridge.js` 需要；插件随 dsh 运行）
-- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-rc.1 及以上**（见上一节）
+- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.2.0-rc.2**（见上一节）
 
 ### 1. 企业微信侧：创建智能机器人（一次性）
 
@@ -104,8 +103,8 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 #     secret: "<你的 Secret>"
 #     # 可选：workspace / personaFile 等
 
-# 3) 重启 dsh 进程（建议钉版本，如 npx @deepseek-ai/dsh@0.1.2-rc.1 web）
-# 4) 也可在 Settings → 插件 → 插件配置 → 企业微信桥接 填写 botId/secret 后重启
+# 3) 重启 dsh 进程（建议钉版本，如 npx @deepseek-ai/dsh@0.2.0-rc.2 web）
+# 4) 也可在侧栏 插件 → 官方 → 企业微信桥接 填写 botId/secret 后重启
 # 5) 在企业微信给机器人发消息即可使用
 ```
 
@@ -121,7 +120,7 @@ dsh plugin --profile web add <本仓库路径>/plugin
 
 ## 🧩 Settings 插件配置卡
 
-安装插件并启动 `dsh web` 后，打开 **设置 → 插件 → 插件配置**，展开 **企业微信桥接**。**保存** 写入 `settings.yaml` 用户层，与 profile `cordis.patch.yml` 同一层。
+安装插件并启动 `dsh web` 后，打开侧栏 **插件 → 官方 → 企业微信桥接**。**保存** 写入该 profile 的 `cordis.patch.yml`。
 
 | 卡片项 | 对应配置 | 保存后 |
 |---|---|---|
@@ -154,7 +153,7 @@ dsh plugin --profile web add <本仓库路径>/plugin
 > （默认 `workspace/headless.patch.yml`，本地配置文件，不在本仓库内）。示例配置已移除该字段，
 > 需要时自行添加，例如 `"patch": "headless.patch.yml"`。
 
-插件字段也可在 **Settings 插件配置卡** 编辑（见上一节），或写在 profile patch。完整字段说明见 [`plugin/README.md`](./plugin/README.md)。
+插件字段也可在侧栏 **插件 → 官方 → 企业微信桥接** 编辑（见上一节），或写在 profile patch。完整字段说明见 [`plugin/README.md`](./plugin/README.md)。
 
 ## 🤖 人设提示词（persona.md）
 

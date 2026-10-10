@@ -9,6 +9,8 @@ import css from './fields.module.css'
 
 /** Props the slot renderer binds for this card. */
 export interface WecomCardProps {
+  /** `summary` is the Plugins list one-liner; `page` is the settings form. */
+  view?: 'summary' | 'page'
   /** Translate a dictionary key of the `im-bridge` namespace. */
   t: (key: ImBridgeLocaleKey) => string
   /** Card snapshot bound from inject.hooks.wecomCard. */
@@ -30,8 +32,9 @@ export interface WecomCardProps {
  * @param props - locale copy, snapshot hook, and form actions.
  * @returns the card, or nothing when the namespace is unavailable.
  */
-export function WecomCard(props: WecomCardProps): ReactElement | null {
+export function WecomCard(props: WecomCardProps): ReactElement | string | null {
   const { t } = props
+  if (props.view === 'summary') return t('description')
   const state = props.useWecomCard(snapshot => snapshot)
   const disabled = !state.writable
   const field = {

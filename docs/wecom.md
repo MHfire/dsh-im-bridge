@@ -27,7 +27,7 @@ replyStream 流式回复（阶段动画 + 进度条 + 最终简报）
 
 ## 二、接入插件
 
-插件 0.4.3 起要求 dsh **0.1.2-rc.1 及以上**；更早的 dsh 请改钉插件 0.4.2（版本对照见根 [README 兼容表](../README.md#-兼容的-deepseek-harness-版本)）。
+插件 0.4.3 起要求 dsh **0.2.0-rc.2**；更早的 dsh 没有 `configForms`、`plugins.item` 和这套 volatile 表单（版本对照见根 [README 兼容表](../README.md#-兼容的-deepseek-harness-版本)）。
 
 在 dsh profile（如 web）中配置（示例见根 README「快速开始」）：
 

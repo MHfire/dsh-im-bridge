@@ -70,19 +70,18 @@ DeepSeek Harness is still a developer preview and makes **no semver compatibilit
 
 | DSH | This repo’s plugin |
 |---|---|
-| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | Compatible (the line the plugin is developed and verified against) |
-| 0.1.2-alpha.4 / 0.1.2-alpha.5 | All three required APIs are in place; not verified individually |
-| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) and earlier | Not compatible; pin `@mhfire/dsh-im-bridge@0.4.2` instead. These versions still ship `@deepseek-ai/dsh-client-runtime` (removed in 0.1.2-alpha.1), have no `ctx.settings.installSection` (0.1.2-alpha.2), and still expose `Session.events` (renamed to `snapshotEvents()` in 0.1.2-alpha.4) |
-| 0.1.3-alpha.x / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
+| [0.2.0-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.0-rc.2) | Compatible (the line the plugin is developed and verified against) |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) and earlier | Not compatible. These versions have no `configForms`, no `plugins.item`, and no volatile form of this kind |
+| untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Plugins page card and the WeCom connection |
 
-Pin `dsh` to `0.1.2-rc.1`, for example `npx @deepseek-ai/dsh@0.1.2-rc.1 web`. Do not rely on a floating `latest`. Legacy `bridge.js` only needs a local `dsh` CLI and is not bound by the table above.
+Pin `dsh` to `0.2.0-rc.2`, for example `npx @deepseek-ai/dsh@0.2.0-rc.2 web`. Do not rely on a floating `latest`. Legacy `bridge.js` only needs a local `dsh` CLI and is not bound by the table above.
 
 ## Quick start
 
 ### Prerequisites
 
 - Node.js 18+ (required for legacy `bridge.js`; the plugin runs with dsh)
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-rc.1 or later** (see the previous section)
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.2.0-rc.2** (see the previous section)
 
 ### 1. WeCom: create an AI Bot (once)
 
@@ -105,8 +104,8 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 #     secret: "<your Secret>"
 #     # optional: workspace / personaFile / …
 
-# 3) Restart dsh (pin the version, e.g. npx @deepseek-ai/dsh@0.1.2-rc.1 web)
-# 4) Or fill botId/secret in Settings → Plugins → Plugin configuration → WeCom Bridge, then restart
+# 3) Restart dsh (pin the version, e.g. npx @deepseek-ai/dsh@0.2.0-rc.2 web)
+# 4) Or fill botId/secret under Plugins → Official → WeCom Bridge, then restart
 # 5) Message the bot in WeCom
 ```
 
@@ -122,7 +121,7 @@ The bot replies in WeCom, and the session appears in the DSH Web GUI session lis
 
 ## Settings plugin card
 
-After the plugin is installed and `dsh web` is running, open **Settings → Plugins → Plugin configuration** and expand **WeCom Bridge**. **Save** writes the user layer of `settings.yaml`, the same layer as the profile `cordis.patch.yml`.
+After the plugin is installed and `dsh web` is running, open **Plugins → Official → WeCom Bridge** in the sidebar. **Save** writes this profile’s `cordis.patch.yml`.
 
 | Card control | Config key | After save |
 |---|---|---|
@@ -154,7 +153,7 @@ Copy `config.example.json` to `config.json` and fill in values (**`config.json` 
 > **`patch`** (legacy `bridge.js` only, optional): path to a workspace `--patch` overlay
 > (default `workspace/headless.patch.yml`, local config not in this repo). Add it yourself if needed, e.g. `"patch": "headless.patch.yml"`.
 
-Plugin fields can also be edited on the **Settings plugin card** (previous section) or in the profile patch. Full field list: [`plugin/README.en.md`](./plugin/README.en.md).
+Plugin fields can also be edited under **Plugins → Official → WeCom Bridge** (previous section) or in the profile patch. Full field list: [`plugin/README.en.md`](./plugin/README.en.md).
 
 ## Persona (`persona.md`)
 

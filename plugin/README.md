@@ -4,9 +4,9 @@
 
 企业微信智能机器人 ⇄ DeepSeek Harness Agent 桥接 **DSH 插件**。
 
-在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：按**企微窗口**拆分持久会话（单聊 = 该用户一条；同一群里所有人共用一条；同一个人的私聊和群聊互不串上下文），会话与 Web GUI 同进程注册（实时可见、可续聊），并在 Settings → 插件配置页提供配置卡片（`botId` / `secret`、白名单、超时、提示语、模型覆盖，写入 `settings.yaml`）。
+在 dsh profile 内**进程内**创建 Agent（不再 spawn 子进程）：按**企微窗口**拆分持久会话（单聊 = 该用户一条；同一群里所有人共用一条；同一个人的私聊和群聊互不串上下文），会话与 Web GUI 同进程注册（实时可见、可续聊），并在侧栏 **插件 → 官方** 提供「企业微信桥接」卡片（`botId` / `secret`、白名单、超时、提示语、模型覆盖，写入该 profile 的 `cordis.patch.yml`）。
 
-Host 通过 `ctx.settings.installSection` 注册 `im-bridge` 命名空间；浏览器半包以 `key: im-bridge` 挂进 `settings.plugin.item`。卡片可填 `botId` / `secret`，与 profile patch 写入同一用户层；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
+Host 把整份 Config 标成 `volatile`，设置服务按 entry id `im-bridge` 生成表单。浏览器半侧注入 `configForms`，用 `get('im-bridge')` 读写，并注册到 `plugins.item`（`id: im-bridge`）。卡片可填 `botId` / `secret`；改 `startHint` 等热字段后下一轮消息即生效，改凭证仍需重启进程才会连 WebSocket。
 
 ## 会话粒度
 
@@ -27,12 +27,11 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 
 | DSH | 本包 |
 |---|---|
-| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | 可适配（对照开发与验证的一线） |
-| 0.1.2-alpha.4 / 0.1.2-alpha.5 | 三个必需 API 都已就位，未逐个验证 |
-| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) 及更早 | 不可适配，请改钉插件 `@mhfire/dsh-im-bridge@0.4.2`。这些版本仍带 `@deepseek-ai/dsh-client-runtime`（0.1.2-alpha.1 起删除，浏览器半包会报 `missed the module table`）、没有 `ctx.settings.installSection`（0.1.2-alpha.2 起）、`Session` 也还是 `.events` 而非 `snapshotEvents()`（0.1.2-alpha.4 起） |
-| 0.1.3-alpha.x / 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验 Settings 卡和企微连线 |
+| [0.2.0-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.0-rc.2) | 可适配（对照开发与验证的一线） |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) 及更早 | 不可适配。这些版本没有 `configForms`、`plugins.item`，也没有这套 volatile 表单 |
+| 未打 tag 的 HEAD | 未保证。升级 dsh 后请再验插件页卡片和企微连线 |
 
-建议把 `dsh` 钉在 `0.1.2-rc.1`，例如 `npx @deepseek-ai/dsh@0.1.2-rc.1 web`，不要只跑浮动的 `latest`。
+建议把 `dsh` 钉在 `0.2.0-rc.2`，例如 `npx @deepseek-ai/dsh@0.2.0-rc.2 web`，不要只跑浮动的 `latest`。
 
 ## 安装
 
@@ -64,13 +63,13 @@ dsh plugin --profile web add @mhfire/dsh-im-bridge
 dsh plugin --profile web add <本包路径>
 ```
 
-未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在 Settings 插件配置卡填写（见下节）。
+未配置 `botId` / `secret` 时插件仍会加载（不阻塞 `dsh web`），日志会提示跳过企微连线；也可在侧栏 **插件 → 官方 → 企业微信桥接** 填写（见下节）。
 
 `npm test` 先跑 `npm run typecheck`，它按 [tsconfig.typecheck.json](tsconfig.typecheck.json) 的 `paths` 解析 `@deepseek-ai/*`，指向同级 `../deepseek-harness` 中**已构建**的 `lib/types`——harness 改动服务与事件契约时，漂移在这里就会报错，而不是等到 boot 崩溃。因此本地开发需要把 harness 检出在插件仓库旁边并先 `pnpm run build`。`npm run build` 与 `npm pack` 不依赖它。
 
 ## Settings 插件配置卡
 
-安装插件并启动 `dsh web` 后，打开 **设置 → 插件 → 插件配置**，展开 **企业微信桥接**（与「终端 / Agent 循环 / 网页搜索」同一组卡片）。改完点右下角 **保存** 写入 `settings.yaml` 用户层，与 profile `cordis.patch.yml` 同一层；**放弃** 丢掉未保存草稿。带「已覆盖」的字段可 **重置** 回 bundle 默认。
+安装插件并启动 `dsh web` 后，打开侧栏 **插件 → 官方 → 企业微信桥接**（与「终端 / Agent 循环 / 网页搜索」同一组）。改完点 **保存** 写入该 profile 的 `cordis.patch.yml`；**放弃** 丢掉未保存草稿。带「已覆盖」的字段可 **重置** 回 bundle 默认。
 
 卡片字段自上而下：
 
@@ -145,7 +144,7 @@ thinking:
 一次性准备：
 
 1. 根级 `allowFrom` 留空（所有人可问诊断），把 **办公** userid 写进 `wecomCli.allowFrom`（不要留空）
-2. 在 **Settings → 插件配置 → 企业微信桥接** 点「安装官方 skills」（Host 下载官方仓库 zip，解到 `$DSH_HOME/wecom-cli-skills`）。**不要用** `npx skills add -g`（会泄漏给 GUI）；skills CLI **没有 `--dir`**，加了也不会写到程序目录。若工作区里已有 `wecomcli-*`，先挪到该目录再删工作区副本。也可手动把官方仓库 `skills/wecomcli-*` 拷进 `$DSH_HOME/wecom-cli-skills`。
+2. 在侧栏 **插件 → 官方 → 企业微信桥接** 点「安装官方 skills」（Host 下载官方仓库 zip，解到 `$DSH_HOME/wecom-cli-skills`）。**不要用** `npx skills add -g`（会泄漏给 GUI）；skills CLI **没有 `--dir`**，加了也不会写到程序目录。若工作区里已有 `wecomcli-*`，先挪到该目录再删工作区副本。也可手动把官方仓库 `skills/wecomcli-*` 拷进 `$DSH_HOME/wecom-cli-skills`。
 
 3. 在 profile `cordis.patch.yml` 打开（启用后插件会用已有 `botId` / `secret` 走 `auth init --bot-id/--secret` 写入 wecom-cli 凭据，不必扫码、不必 `npm install -g @wecom/cli`）：
 

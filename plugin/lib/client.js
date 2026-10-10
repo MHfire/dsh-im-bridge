@@ -74,7 +74,7 @@ window.__ModuleLoader__.load({
 							className: PluginCard_module_css_default.pending,
 							children: props.t("unsaved")
 						}) : null,
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { className: open ? `${PluginCard_module_css_default.chevron} ${PluginCard_module_css_default.chevronOpen}` : PluginCard_module_css_default.chevron })
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutlineMedium, { className: open ? `${PluginCard_module_css_default.chevron} ${PluginCard_module_css_default.chevronOpen}` : PluginCard_module_css_default.chevron })
 					]
 				}), open ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 					className: PluginCard_module_css_default.body,
@@ -241,6 +241,7 @@ window.__ModuleLoader__.load({
 		*/
 		function WecomCard(props) {
 			const { t } = props;
+			if (props.view === "summary") return t("description");
 			const state = props.useWecomCard((snapshot) => snapshot);
 			const disabled = !state.writable;
 			const field = {
@@ -673,7 +674,7 @@ window.__ModuleLoader__.load({
 			skillsCount = 0;
 			skillsError = "";
 			/**
-			* @param scope - bound settings scope for the `im-bridge` namespace.
+			* @param scope - configuration form for the `im-bridge` namespace.
 			* @param describe - Host describe face; secret literals never ride it.
 			* @param rpc - optional Connection RPC for the skills install button.
 			*/
@@ -875,25 +876,28 @@ window.__ModuleLoader__.load({
 			"locale",
 			"connection",
 			"remote",
-			"settingsScope"
+			"configForms"
 		];
 		/**
-		* Register locale copy and the Plugins-tab card.
+		* Register locale copy and the Plugins page card while the Host serves this namespace.
 		* @param ctx - browser plugin context.
 		*/
 		function apply(ctx) {
 			const connection = ctx.get("connection");
-			const card = new WecomCardController(ctx.settingsScope.bind({ namespace: NS }), ctx.settingsScope.describe(), connection?.rpc);
+			const card = new WecomCardController(ctx.configForms.get(NS), ctx.configForms.describe(), connection?.rpc);
+			const t = ctx.locale.bind(NS);
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en
 			}), "im-bridge: locale dicts");
-			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
-				name: "settings.plugin.item",
-				key: NS,
+			ctx.effect(() => ctx.configForms.whileServed([NS], () => ctx.slots.inject("plugins.item", () => ctx.slots.register({
+				name: "plugins.item",
+				id: NS,
+				order: 50,
+				label: () => t("title"),
 				locale: NS,
 				inject: () => card.inject()
-			}, WecomCard));
+			}, WecomCard))), "im-bridge: settings card");
 		}
 		//#endregion
 		exports.apply = apply;

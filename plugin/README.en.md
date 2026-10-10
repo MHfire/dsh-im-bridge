@@ -4,9 +4,9 @@
 
 WeCom AI Bot ⇄ DeepSeek Harness Agent bridge — a **DSH plugin**.
 
-Creates Agents **in-process** inside a dsh profile (no child-process spawn): one durable DSH session **per WeCom chat window** (1:1 = that user; everyone in the same group shares one session — a person’s DM and group chats stay separate), sessions registered with the Web GUI (live view and continue-chat), plus a Settings → Plugins card (`botId` / `secret`, allow-list, timeouts, copy, and model overrides, written to `settings.yaml`).
+Creates Agents **in-process** inside a dsh profile (no child-process spawn): one durable DSH session **per WeCom chat window** (1:1 = that user; everyone in the same group shares one session — a person’s DM and group chats stay separate), sessions registered with the Web GUI (live view and continue-chat), plus a **Plugins → Official → WeCom Bridge** card (`botId` / `secret`, allow-list, timeouts, copy, and model overrides, written to that profile’s `cordis.patch.yml`).
 
-The Host half registers the `im-bridge` namespace through `ctx.settings.installSection`. The browser half contributes a card into `settings.plugin.item` under `key: im-bridge`. The card can set `botId` / `secret` on the same user layer as the profile patch. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
+The Host marks the whole Config schema `volatile`, and the settings service builds the form from entry id `im-bridge`. The browser half injects `configForms`, reads and writes with `get('im-bridge')`, and registers `plugins.item` with `id: im-bridge`. The card can set `botId` / `secret`. Live fields such as `startHint` apply on the next message; changing credentials still requires a process restart to open the WebSocket.
 
 ## Session granularity
 
@@ -27,12 +27,11 @@ DeepSeek Harness is still a developer preview and makes **no semver compatibilit
 
 | DSH | This package |
 |---|---|
-| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) | Compatible (the line this package is developed and verified against) |
-| 0.1.2-alpha.4 / 0.1.2-alpha.5 | All three required APIs are in place; not verified individually |
-| [0.1.1-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.1-rc.2) and earlier | Not compatible; pin `@mhfire/dsh-im-bridge@0.4.2` instead. These versions still ship `@deepseek-ai/dsh-client-runtime` (removed in 0.1.2-alpha.1, so the browser half reports `missed the module table`), have no `ctx.settings.installSection` (0.1.2-alpha.2), and still expose `Session.events` rather than `snapshotEvents()` (0.1.2-alpha.4) |
-| 0.1.3-alpha.x / untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Settings card and the WeCom connection |
+| [0.2.0-rc.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.0-rc.2) | Compatible (the line this package is developed and verified against) |
+| [0.1.2-rc.1](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.2-rc.1) and earlier | Not compatible. These versions have no `configForms`, no `plugins.item`, and no volatile form of this kind |
+| untagged HEAD | Not guaranteed. After upgrading dsh, re-check the Plugins page card and the WeCom connection |
 
-Pin `dsh` to `0.1.2-rc.1`, for example `npx @deepseek-ai/dsh@0.1.2-rc.1 web`. Do not rely on a floating `latest`.
+Pin `dsh` to `0.2.0-rc.2`, for example `npx @deepseek-ai/dsh@0.2.0-rc.2 web`. Do not rely on a floating `latest`.
 
 ## Install
 
@@ -64,13 +63,13 @@ Install from this repo’s `plugin/` directory or a `file:` path:
 dsh plugin --profile web add <package-path>
 ```
 
-If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them on the Settings plugin card (see the next section).
+If `botId` / `secret` are missing, the plugin still loads (does not block `dsh web`); logs warn that WeCom connect is skipped. You can also fill them under **Plugins → Official → WeCom Bridge** (see the next section).
 
 `npm test` runs `npm run typecheck` first. That check resolves `@deepseek-ai/*` through the `paths` in [tsconfig.typecheck.json](tsconfig.typecheck.json), pointing at the **built** `lib/types` of a sibling `../deepseek-harness` checkout, so a harness change to a service or event contract fails here instead of at boot. Local development therefore needs that checkout next to this repository, built with `pnpm run build`. Neither `npm run build` nor `npm pack` depends on it.
 
 ## Settings plugin card
 
-After the plugin is installed and `dsh web` is running, open **Settings → Plugins → Plugin configuration** and expand **WeCom Bridge** (same card chrome as Shell / Agent loop / Web search). **Save** writes the user layer of `settings.yaml`, the same layer as the profile `cordis.patch.yml`. **Discard** drops unsaved drafts. Fields marked **Overridden** can be **Reset** to the bundle default.
+After the plugin is installed and `dsh web` is running, open **Plugins → Official → WeCom Bridge** in the sidebar (same group as Shell / Agent loop / Web search). **Save** writes this profile’s `cordis.patch.yml`. **Discard** drops unsaved drafts. Fields marked **Overridden** can be **Reset** to the bundle default.
 
 Fields, top to bottom:
 
@@ -145,7 +144,7 @@ Office commands run **only through the `wecom_cli` tool**: the model passes `arg
 One-time setup:
 
 1. Leave root `allowFrom` empty (everyone may ask) and put **office** userids in `wecomCli.allowFrom` (do not leave that empty)
-2. In **Settings → Plugins → WeCom Bridge**, click **Install official skills** (the Host downloads the official repo zip into `$DSH_HOME/wecom-cli-skills`). **Do not** use `npx skills add -g` (it leaks into the GUI). The skills CLI has **no `--dir`**, so that flag does not write into the plugin directory. If `wecomcli-*` folders already sit in the workspace, move them here and delete the workspace copies. You can also copy official `skills/wecomcli-*` into `$DSH_HOME/wecom-cli-skills` by hand.
+2. Under **Plugins → Official → WeCom Bridge**, click **Install official skills** (the Host downloads the official repo zip into `$DSH_HOME/wecom-cli-skills`). **Do not** use `npx skills add -g` (it leaks into the GUI). The skills CLI has **no `--dir`**, so that flag does not write into the plugin directory. If `wecomcli-*` folders already sit in the workspace, move them here and delete the workspace copies. You can also copy official `skills/wecomcli-*` into `$DSH_HOME/wecom-cli-skills` by hand.
 
 3. Enable it in the profile `cordis.patch.yml` (the plugin then writes wecom-cli credentials from the existing `botId` / `secret` via hidden `auth init --bot-id/--secret`; no QR scan and no `npm install -g @wecom/cli`):
 

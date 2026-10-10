@@ -1,7 +1,7 @@
 /** Expandable plugin card chrome matching the Host Plugins section. */
 
 import { useState, type ReactElement, type ReactNode } from 'react'
-import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ImBridgeLocaleKey } from './locales.ts'
 import type { CardShell } from './card-form.ts'
 import css from './PluginCard.module.css'
@@ -49,7 +49,7 @@ export function PluginCard(props: PluginCardProps): ReactElement | null {
           <span className={css.description}>{props.t(props.descriptionKey)}</span>
         </span>
         {state.dirty ? <span className={css.pending}>{props.t('unsaved')}</span> : null}
-        <IconChevronDownOutline14 className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} />
+        <IconChevronDownOutlineMedium className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} />
       </button>
       {open
         ? (
