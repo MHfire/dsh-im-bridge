@@ -9,7 +9,7 @@
 Connect WeCom (WeChat Work) AI Bot over a long-lived WebSocket, hand messages to a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Agent, and stream replies back to WeCom.
 
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.4.3-blue)
+![version](https://img.shields.io/badge/version-0.4.4-blue)
 ![dsh](https://img.shields.io/badge/dsh-plugin-yellow)
 
 </div>
@@ -66,7 +66,7 @@ flowchart LR
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.4.3 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Plugin 0.4.4 is aligned to published tags by the APIs it actually calls (details in [`plugin/README.en.md`](./plugin/README.en.md)):
 
 | DSH | This repo’s plugin |
 |---|---|
@@ -94,7 +94,7 @@ Pin `dsh` to `0.2.0-rc.2`, for example `npx @deepseek-ai/dsh@0.2.0-rc.2 web`. Do
 ```powershell
 # 1) Install into the target profile (e.g. web)
 dsh plugin --profile web add @mhfire/dsh-im-bridge
-# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
+# Or pin a version: dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.4
 
 # 2) In $DSH_HOME/profiles/web/cordis.patch.yml, supply credentials
 #    (other fields ship as bundle defaults; override as needed)

@@ -23,7 +23,7 @@ One DSH session maps to one WeCom chat window, not “every window of the same u
 
 ## Compatible DeepSeek Harness versions
 
-DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.3 is aligned to published tags by the APIs it actually calls:
+DeepSeek Harness is still a developer preview and makes **no semver compatibility promise** to out-of-tree plugins. Package 0.4.4 is aligned to published tags by the APIs it actually calls:
 
 | DSH | This package |
 |---|---|
@@ -40,7 +40,7 @@ Pin `dsh` to `0.2.0-rc.2`, for example `npx @deepseek-ai/dsh@0.2.0-rc.2 web`. Do
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # Or pin a version:
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.4
 ```
 
 In `$DSH_HOME/profiles/web/cordis.patch.yml` (or your profile), supply credentials only (other fields ship as bundle defaults and can be overridden):

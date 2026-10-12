@@ -23,7 +23,7 @@ Host 把整份 Config 标成 `volatile`，设置服务按 entry id `im-bridge` �
 
 ## 兼容的 DeepSeek Harness 版本
 
-DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.3 按实际调用的 API 对齐已发布 tag：
+DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼容承诺**。本包 0.4.4 按实际调用的 API 对齐已发布 tag：
 
 | DSH | 本包 |
 |---|---|
@@ -40,7 +40,7 @@ DeepSeek Harness 仍是 developer preview，对外置插件**没有 semver 兼�
 ```powershell
 dsh plugin --profile web add @mhfire/dsh-im-bridge
 # 或钉版本：
-# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.3
+# dsh plugin --profile web add @mhfire/dsh-im-bridge@0.4.4
 ```
 
 在 `$DSH_HOME/profiles/web/cordis.patch.yml`（或对应 profile）中补密钥即可（其余项已有 bundle 默认，可按需覆盖）：
