@@ -229,16 +229,17 @@ const WECOM_TITLE_PREFIX = {
 	group: "企微·群"
 };
 /** Leading `企微·` / previously used `企业微信·` channel labels. */
-const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)\s*/u;
+const CHANNEL_PREFIX = /^(?:企业微信|企微)·(?:私聊|群)(?:·[^\s·]+)?\s*/u;
 /**
 * Sidebar title: channel kind plus first-prompt text, never an id.
 * @param kind - {@link WecomSessionRef.kind}.
 * @param raw - automatic or previously prefixed title.
 */
-function wecomDisplayTitle(kind, raw) {
-	const prefix = WECOM_TITLE_PREFIX[kind];
+function wecomDisplayTitle(kind, raw, who) {
+	const base = WECOM_TITLE_PREFIX[kind];
+	const label = who !== void 0 && who !== "" ? `${base}·${who}` : base;
 	const stripped = raw.replace(CHANNEL_PREFIX, "").trim();
-	return stripped === "" ? prefix : `${prefix} ${stripped}`;
+	return stripped === "" ? label : `${label} ${stripped}`;
 }
 /** One leading `@nickname` and its separator; JS `\s` covers WeCom's U+00A0 and U+2005. */
 const LEADING_MENTION = /^@[^\s@]+(?:\s+|$)/u;
@@ -8786,7 +8787,7 @@ function apply(ctx, config) {
 				if (data === void 0) return;
 				if (data.source?.kind === "user") return;
 				const raw = typeof data.title === "string" ? data.title : "";
-				const next = wecomDisplayTitle(kind, raw);
+				const next = wecomDisplayTitle(kind, raw, kind === "single" ? st.sender : void 0);
 				if (next === raw) return;
 				const messageSeqs = Array.isArray(data.messageSeqs) ? data.messageSeqs.filter((seq) => typeof seq === "number") : [];
 				if (messageSeqs.length === 0) return;
@@ -9037,6 +9038,8 @@ function apply(ctx, config) {
 				chats.set(ref.key, st);
 			}
 			st.office = senderHasOfficeAccess(cfg().wecomCli.allowFrom, ref.sender);
+			st.sender = ref.sender;
+			st.chatid = ref.chatid;
 			st = await ensureAgent(ref);
 			const startedAt = Date.now();
 			const streamId = generateReqId("stream");
